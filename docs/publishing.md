@@ -29,13 +29,14 @@ Enter the current OTP when prompted. Verify:
 npm view @fishdivinity/dsh-local-search version --registry=https://registry.npmjs.org
 ```
 
-Then create the `v0.1.0` tag and GitHub Release manually (the release workflow is for later versions):
+Then configure trusted publishing (below), and create the tag:
 
 ```powershell
 git tag v0.1.0
 git push origin v0.1.0
-gh release create v0.1.0 --generate-notes --title v0.1.0
 ```
+
+For v0.1.0 the workflow sees that the version is already on npm, skips the publish step, and creates the GitHub Release. Later tags publish normally.
 
 ## One-time: configure npm trusted publishing
 
