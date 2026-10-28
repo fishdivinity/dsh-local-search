@@ -25,3 +25,5 @@ dsh plugin --profile desktop add <absolute-path-to-this-repo>
 ```
 
 Or, from an agent session with plugin management, install this directory as a bundle.
+
+Release process: [`.github/RELEASING.md`](.github/RELEASING.md).

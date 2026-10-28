@@ -1,4 +1,4 @@
-# Publishing
+# Releasing
 
 ## One-time: enable npm 2FA
 
@@ -54,7 +54,7 @@ After v0.1.0 exists:
 
 Every release tag must have `docs/releases/<tag>.md` (for example `docs/releases/v0.1.1.md`). The workflow fails before publishing if the file is missing, so the GitHub Release never falls back to a generated commit link.
 
-Start from [`docs/releases/TEMPLATE.md`](releases/TEMPLATE.md) and write:
+Start from [`docs/releases/TEMPLATE.md`](../docs/releases/TEMPLATE.md) and write:
 
 - highlights: the user-visible outcome;
 - grouped changes: search, scopes, engines, security, docs;
