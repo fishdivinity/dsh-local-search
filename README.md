@@ -165,7 +165,7 @@ npm run check
 npm run pack:check
 ```
 
-The engine modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`) are independent of the DSH runtime so their tests run under plain Node. See [`docs/architecture.md`](docs/architecture.md) and [`docs/extending-engines.md`](docs/extending-engines.md).
+The engine modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`) are independent of the DSH runtime so their tests run under plain Node. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), and [`docs/publishing.md`](docs/publishing.md).
 
 ## Changelog
 
