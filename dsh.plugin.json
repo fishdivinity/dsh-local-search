@@ -1,0 +1,10 @@
+{
+  "name": "@fishdivinity/dsh-local-search",
+  "displayName": "Local Search",
+  "description": "Read-only Everything filename search and Anytxt document-content search for DeepSeek Harness.",
+  "version": "0.1.0",
+  "platform": "windows",
+  "tags": ["search", "windows", "everything", "anytxt", "documents", "local-search"],
+  "homepage": "https://github.com/fishdivinity/dsh-local-search",
+  "license": "MIT"
+}

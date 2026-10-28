@@ -1,0 +1,65 @@
+{
+  "name": "@fishdivinity/dsh-local-search",
+  "version": "0.1.0",
+  "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README-zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "everything",
+    "anytxt",
+    "local-search",
+    "desktop-search",
+    "windows"
+  ],
+  "license": "MIT",
+  "author": "fishdivinity",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fishdivinity/dsh-local-search"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.1-0 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/dsh-system-prompt": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/dsh-timeout": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/dsh-working-directory": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/schemastery": "^3.18.5"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

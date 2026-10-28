@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": {
+    "namespace": "fishdivinity",
+    "name": "local-search",
+    "coordinate": "fishdivinity/local-search",
+    "packageName": "@fishdivinity/dsh-local-search"
+  },
+  "names": {
+    "pluginNames": ["local-search"],
+    "loaderIds": ["fishdivinity-local-search"],
+    "services": [],
+    "tools": [
+      "local_search_files",
+      "local_search_content",
+      "local_search_fragments",
+      "local_search_read",
+      "local_search_status"
+    ],
+    "commands": [],
+    "skills": [],
+    "skillProviders": [],
+    "events": [],
+    "settingsNamespaces": [],
+    "routes": []
+  }
+}
