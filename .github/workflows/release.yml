@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +49,7 @@ jobs:
 
       - name: Create GitHub Release
         if: success()
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
