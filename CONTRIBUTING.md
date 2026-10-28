@@ -21,7 +21,7 @@ No runtime dependencies are installed. Engine modules under `lib/` are plain ESM
 ## Local install while developing
 
 ```powershell
-dsh plugin --profile desktop add <absolute-path-to-this-repo>
+dsh plugin --profile <profile> add <absolute-path-to-this-repo>
 ```
 
 Or, from an agent session with plugin management, install this directory as a bundle.

@@ -18,7 +18,7 @@ This plugin is read-only. It registers no write, delete, index-sync, OCR, export
 
 ## Reporting
 
-Open a private security advisory on GitHub, or email the maintainer, for issues such as:
+Open a private security advisory on GitHub for issues such as:
 
 - command/argument injection into `es.exe`;
 - an Anytxt call that mutates state;
