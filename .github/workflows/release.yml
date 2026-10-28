@@ -29,6 +29,15 @@ jobs:
             exit 1
           }
 
+      - name: Verify release notes exist
+        shell: bash
+        run: |
+          notes="docs/releases/$GITHUB_REF_NAME.md"
+          test -f "$notes" || {
+            echo "missing $notes; start from docs/releases/TEMPLATE.md"
+            exit 1
+          }
+
       - run: npm test
       - run: npm run check
 
@@ -47,9 +56,15 @@ jobs:
         if: steps.version.outputs.published != 'true'
         run: npm publish --access public --provenance
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         if: success()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          notes="docs/releases/$GITHUB_REF_NAME.md"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$notes" --title "$GITHUB_REF_NAME"
+          else
+            gh release create "$GITHUB_REF_NAME" --notes-file "$notes" --title "$GITHUB_REF_NAME"
+          fi

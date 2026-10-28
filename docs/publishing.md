@@ -36,7 +36,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-For v0.1.0 the workflow sees that the version is already on npm, skips the publish step, and creates the GitHub Release. Later tags publish normally.
+For v0.1.0 the workflow sees that the version is already on npm, skips the publish step, and creates or updates the GitHub Release from `docs/releases/v0.1.0.md`. Later tags publish normally.
 
 ## One-time: configure npm trusted publishing
 
@@ -50,9 +50,21 @@ After v0.1.0 exists:
    - Environment: leave empty
 3. No long-lived npm token or `NPM_TOKEN` secret is needed.
 
+## Release notes (required)
+
+Every release tag must have `docs/releases/<tag>.md` (for example `docs/releases/v0.1.1.md`). The workflow fails before publishing if the file is missing, so the GitHub Release never falls back to a generated commit link.
+
+Start from [`docs/releases/TEMPLATE.md`](releases/TEMPLATE.md) and write:
+
+- highlights: the user-visible outcome;
+- grouped changes: search, scopes, engines, security, docs;
+- install/upgrade command;
+- compatibility and engine prerequisite changes;
+- a full-changelog link at the end, not as the entire body.
+
 ## Later releases (agent can do this)
 
-1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
+1. Bump `version` in `package.json`, add a `CHANGELOG.md` entry, and add `docs/releases/vX.Y.Z.md`.
 2. Run `npm test`, `npm run check`, and `npm run pack:check`.
 3. Commit and push `main`.
 4. Tag and push:
