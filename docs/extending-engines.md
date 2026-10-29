@@ -4,7 +4,7 @@ The tool surface is intentionally capability-based (`local_search_files` / `loca
 
 ## 1. Implement a provider
 
-Put the backend in `lib/` (for example `lib/windows-search.js` or `lib/recoll.js`) and export plain functions without importing DSH runtime packages, so it stays unit-testable under Node:
+Put the backend in `lib/` (for example `lib/other-files.js` or `lib/other-content.js`) and export plain functions without importing DSH runtime packages, so it stays unit-testable under Node:
 
 ```js
 // files engine
@@ -26,7 +26,7 @@ In `lib/engines.js`, add one entry to `filesEngines` or `contentEngines`:
 ```js
 const contentEngines = new Map([
   ['anytxt', { name: 'anytxt', search, fragments, read, status }],
-  ['recoll', { name: 'recoll', search: recollSearch, fragments: recollFragments, read: recollRead, status: recollStatus }],
+  ['other', { name: 'other', search: otherSearch, fragments: otherFragments, read: otherRead, status: otherStatus }],
 ])
 ```
 
@@ -43,11 +43,23 @@ const contentEngines = new Map([
 - Update `README.md` / `README-zh.md` with requirements, scope semantics, and error codes.
 - Add a `docs/` note for user-installed prerequisite/index behavior.
 
-## Known future candidates
+A new backend must not change the five tool names. Only `engine` values and registry entries grow.
 
-- **Windows Search** (`SystemIndex`): built-in, no extra install, but Node needs COM/OLE DB or a PowerShell bridge; indexing scope is often reduced.
-- **Recoll**: open source, CLI (`recollq` / `recoll -t`), user must install and index.
-- **Everything 1.5 content**: same Everything backend, not a separate engine; only 1.5 alpha has content indexing.
-- **TextSeek / DocFetcher / ultrasearch**: no stable public API or too early; not planned.
+## Config page debt
 
-Adding these must not change the five tool names. Only `engine` values and registry entries grow.
+The registry is engine-agnostic; the configuration page is not. `lib/client.js`
+lays out sections named after the two engines (`esPath` / `esEncoding` under
+Everything, `anytxtUrl` under Anytxt) and the schema's own fields are named
+after them too (`esPath`, `anytxtUrl`, `esEncoding`).
+
+A second backend therefore needs, before it can be configured rather than
+hard-coded:
+
+- a schema that keeps each engine's settings in a nested object the page can
+  render one section per engine, instead of one flat set of engine-named keys;
+- a page that iterates the registry and renders a section per engine, with the
+  Test control probing that engine's own endpoint;
+- a probe route per engine rather than the current single both-engines probe.
+
+Until then a new engine is configurable only through the profile YAML, exactly
+as the current fields are.

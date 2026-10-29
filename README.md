@@ -67,22 +67,24 @@ Restart the profile or open a new session. The five `local_search_*` tools appea
 
 ## Configuration
 
-v0.1 has **no settings page**. Edit the plugin row in the profile's `cordis.patch.yml`, or use the profile patch override example below. A Plugins-page configuration form (sidebar **Plugins** → this plugin → **Configure**) is planned for v0.2.
+Sidebar **Plugins** → the **Local Search** card in the **Official plugins** group → the plugin's own page. That is the same card shape the GitHub plugin contributes. Saves apply to the next tool call; leaving the page drops unsaved edits, and a field's reset returns it to the profile layer.
 
-All keys are optional. The row config replaces the whole config object, never deep-merges.
+**Test connection**, directly under the Anytxt endpoint, probes that address as typed — nothing has to be saved first — together with Everything, and answers in one line. A failing engine gets a link to its official download page; this plugin never bundles, downloads, or installs either product.
+
+Every key is optional, and the row config replaces the whole config object rather than merging. Only `timeoutMs` stays in the profile's `cordis.patch.yml`: each tool fixes its deadline when it registers, so the page leaves it out rather than showing a field that would not take effect.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `esPath` | auto-detect | Absolute path to `es.exe`. Resolution order: `esPath`, `ES_PATH`, common install folders, `where.exe`. |
-| `anytxtUrl` | `http://127.0.0.1:9920` | Anytxt JSON-RPC endpoint. The default also tries `:9921`. |
+| `anytxtUrl` | `http://127.0.0.1:9920` | Anytxt JSON-RPC endpoint on this machine (`127.0.0.1`, `localhost` or `[::1]` only). The default also tries `:9921`. |
 | `workspaceRoot` | session default directory | Root for `scope=workspace`. |
 | `workRoot` | empty | Root for `scope=work`; required before using that scope. |
 | `personalRoot` | empty | Root for `scope=personal`; required before using that scope. |
 | `allRoots` | `C:\` plus `D:\` when present | Semicolon-separated roots for Anytxt `scope=all`. Everything `scope=all` searches all volumes it indexes. |
 | `maxResults` | `20` | Default result cap. Hard cap is 100. |
-| `timeoutMs` | `30000` | Per-call timeout budget. |
+| `timeoutMs` | `30000` | Per-call timeout budget; profile YAML only. |
 | `readMaxChars` | `8000` | Default `local_search_read` window; hard cap is 20,000 characters. |
-| `esEncoding` | `gbk` | Code page used to decode `es.exe` output. zh-CN Windows uses GBK. |
+| `esEncoding` | `gbk` | Code page used to decode `es.exe` output. The page offers `gbk` and `utf-8` as a two-choice control. |
 
 Example row override:
 
@@ -146,7 +148,6 @@ If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell b
 - Anytxt's JSON-RPC API is local and unofficial; GUI versions can change behavior. The plugin reports unreachable/wrong-shape responses instead of guessing.
 - Anytxt's index may be stale. Verify important hits with `read`/the original file.
 - No auto-start: starting `ATGUI.exe` writes the index and is left to the user.
-- No settings page in v0.1; configure through the profile patch. A Plugins-page form is planned.
 - Anytxt's terms limit personal/non-commercial use; commercial use needs its own license.
 
 ## Related plugins
@@ -165,7 +166,7 @@ npm run check
 npm run pack:check
 ```
 
-The engine modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`) are independent of the DSH runtime so their tests run under plain Node. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), and [`.github/RELEASING.md`](.github/RELEASING.md).
+The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`, `lib/config.js`) are independent of the DSH runtime so their tests run under plain Node. `lib/client.js` ships as the browser half: it is written directly in the client module system's lazy-CJS factory format, so there is no build step. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), and [`.github/RELEASING.md`](.github/RELEASING.md).
 
 ## Changelog
 

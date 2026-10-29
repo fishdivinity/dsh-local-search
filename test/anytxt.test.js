@@ -17,6 +17,15 @@ test('stripHighlights removes Anytxt markers', () => {
   assert.equal(stripHighlights('a *<<*b*>>* c'), 'a b c')
 })
 
+test('a non-local endpoint is refused where it is used, not at activation', () => {
+  for (const url of ['http://127.0.0.1:9920', 'http://localhost:9920', 'https://[::1]:9921']) {
+    assert.ok(resolveAnytxtUrls(url).length >= 1, url)
+  }
+  for (const url of ['http://example.com:9920', 'http://192.168.1.20:9920']) {
+    assert.throws(() => resolveAnytxtUrls(url), (error) => error.code === 'ANYTXT_ENDPOINT_REMOTE', url)
+  }
+})
+
 test('resolveAnytxtUrls adds the 9921 fallback only for the default port', () => {
   assert.deepEqual(resolveAnytxtUrls('http://127.0.0.1:9920'), [
     'http://127.0.0.1:9920',

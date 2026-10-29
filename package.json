@@ -1,11 +1,13 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.1.0",
-  "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only.",
+  "version": "0.2.0",
+  "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only, with a configuration page on the Plugins page.",
   "type": "module",
   "main": "lib/index.js",
+  "icon": "icon.svg",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
     "./package.json": "./package.json"
@@ -21,7 +23,7 @@
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js",
+    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/probe.js && node --check lib/route.js && node --check lib/client.js",
     "pack:check": "npm pack --dry-run"
   },
   "keywords": [
@@ -49,17 +51,36 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.1-0 <0.3.0",
     "@deepseek-ai/dsh-llm": ">=0.2.1-0 <0.3.0",
     "@deepseek-ai/dsh-system-prompt": ">=0.2.1-0 <0.3.0",
     "@deepseek-ai/dsh-timeout": ">=0.2.1-0 <0.3.0",
     "@deepseek-ai/dsh-tools": ">=0.2.1-0 <0.3.0",
     "@deepseek-ai/dsh-working-directory": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/schemastery": "^3.18.5"
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-primitives": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "dsh": {
     "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
     }
   }
 }

@@ -66,22 +66,24 @@ dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
 
 ## 配置
 
-v0.1 **没有配置页面**。在 profile 的 `cordis.patch.yml` 里改插件 row，或使用下面的 override 示例。v0.2 计划在侧边栏 **Plugins** → 本插件 → **Configure** 提供表单。
+侧边栏 **Plugins** → **Official plugins** 组里的「本地搜索」卡片 → 插件自己的页面。这张卡和 GitHub 插件那张是同一个形态。保存后对下一次工具调用生效；离开页面丢弃未保存改动，字段上的「重置」把它交回 profile 层。
 
-全部可选；row config 是整块替换，不会深合并。
+**测试连接**就放在 Anytxt 地址输入框下面，测的是**输入框里当前的地址**（不用先保存），同时把 Everything 一起探一遍，一行给结果。某个引擎不可用时会给出它的官方下载页；本插件不打包、不下载、也不代替你安装这两个程序。
+
+全部可选；row config 是整块替换，不会深合并。只有 `timeoutMs` 留在 profile 的 `cordis.patch.yml`：每个工具在注册时就固定截止时间，因此页面上不提供这个字段，免得出现“改了没反应”。
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `esPath` | 自动探测 | `es.exe` 绝对路径。顺序：`esPath` → `ES_PATH` → 常见安装目录 → `where.exe` |
-| `anytxtUrl` | `http://127.0.0.1:9920` | Anytxt JSON-RPC 地址；默认还会尝试 `:9921` |
+| `anytxtUrl` | `http://127.0.0.1:9920` | 本机 Anytxt JSON-RPC 地址（只接受 `127.0.0.1`、`localhost`、`[::1]`）；默认还会尝试 `:9921` |
 | `workspaceRoot` | 会话默认目录 | `scope=workspace` 的根 |
 | `workRoot` | 空 | `scope=work` 的根；使用前必须配置 |
 | `personalRoot` | 空 | `scope=personal` 的根；使用前必须配置 |
 | `allRoots` | `C:\` + 存在时的 `D:\` | Anytxt `scope=all` 的根，分号分隔；Everything 的 `all` 搜它索引的所有卷 |
 | `maxResults` | `20` | 默认结果上限；硬上限 100 |
-| `timeoutMs` | `30000` | 单次调用超时预算 |
+| `timeoutMs` | `30000` | 单次调用超时预算；仅 profile YAML |
 | `readMaxChars` | `8000` | `local_search_read` 默认窗口；硬上限 20,000 字符 |
-| `esEncoding` | `gbk` | `es.exe` 输出的代码页；zh-CN 用 GBK |
+| `esEncoding` | `gbk` | `es.exe` 输出的代码页；页面上是 `gbk` / `utf-8` 的二选一控件 |
 
 示例：
 
@@ -142,7 +144,6 @@ v0.1 **没有配置页面**。在 profile 的 `cordis.patch.yml` 里改插件 ro
 - Anytxt 的 JSON-RPC 是本地非官方接口，GUI 版本可能变；插件对不可达/结构不符会明确报错。
 - Anytxt 索引可能滞后；重要命中要用 `read`/原文件复核。
 - 不自动启动 `ATGUI.exe`（启动会写索引），由用户手动控制。
-- v0.1 没有配置页面；改 profile patch。v0.2 计划做 Plugins 页表单。
 - Anytxt 条款限个人/非商业使用；商用需单独授权。
 
 ## 开发
@@ -155,7 +156,7 @@ npm run check
 npm run pack:check
 ```
 
-`lib/everything.js`、`lib/anytxt.js`、`lib/roots.js`、`lib/format.js` 不依赖 DSH runtime，可在普通 Node 下测试。架构与扩展见 [`docs/architecture.md`](docs/architecture.md)、[`docs/extending-engines.md`](docs/extending-engines.md)。
+引擎与配置模块（`lib/everything.js`、`lib/anytxt.js`、`lib/roots.js`、`lib/format.js`、`lib/config.js`）不依赖 DSH runtime，可在普通 Node 下测试。`lib/client.js` 是随包发布的浏览器半：直接按客户端模块系统的 lazy-CJS factory 格式手写成最终产物，没有构建步骤。架构与扩展见 [`docs/architecture.md`](docs/architecture.md)、[`docs/extending-engines.md`](docs/extending-engines.md)。
 
 ## Changelog
 

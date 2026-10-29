@@ -40,8 +40,14 @@ test('formatFragments joins snippets and handles empty', () => {
 
 test('formatRead reports the total and the shown window', () => {
   const text = formatRead({ text: 'hello', totalChars: 10, offset: 2, returned: 5 })
-  assert.match(text, /chars 10; showing 2\.\.7/)
+  // Inclusive end, so 5 characters starting at 2 read as 2..6.
+  assert.match(text, /chars 10; showing 2\.\.6/)
   assert.match(text, /hello/)
+})
+
+test('formatRead says so when the window is past the end', () => {
+  const text = formatRead({ text: '', totalChars: 10, offset: 10, returned: 0 })
+  assert.match(text, /nothing to show at offset 10/)
 })
 
 test('formatStatus marks skipped probes and lists registered engines', () => {

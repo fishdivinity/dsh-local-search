@@ -1,7 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Local search">
-  <rect width="64" height="64" rx="12" fill="#1f6feb"/>
-  <circle cx="27" cy="27" r="13" fill="none" stroke="#ffffff" stroke-width="5"/>
-  <line x1="36.5" y1="36.5" x2="50" y2="50" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <rect x="21" y="22" width="12" height="3" rx="1.5" fill="#ffffff" opacity="0.9"/>
-  <rect x="21" y="28" width="9" height="3" rx="1.5" fill="#ffffff" opacity="0.7"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Local search">
+  <defs>
+    <linearGradient id="tile" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8fb2ff"/>
+      <stop offset="0.55" stop-color="#7b83ff"/>
+      <stop offset="1" stop-color="#a466f2"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="14" y1="14" x2="40" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dfe6ff"/>
+    </linearGradient>
+    <linearGradient id="page" x1="20" y1="18" x2="34" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd98a"/>
+      <stop offset="1" stop-color="#ffb457"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="38" y1="38" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c8d4ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(16 12) rotate(48) scale(44)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#tile)"/>
+  <rect width="64" height="64" rx="14" fill="url(#glow)"/>
+
+  <circle cx="27" cy="27" r="14" fill="none" stroke="url(#lens)" stroke-width="5"/>
+  <rect x="21" y="19" width="12" height="15" rx="2.5" fill="url(#page)"/>
+  <rect x="23.5" y="23" width="7" height="2" rx="1" fill="#8a5a12" opacity="0.75"/>
+  <rect x="23.5" y="27" width="5" height="2" rx="1" fill="#8a5a12" opacity="0.55"/>
+  <line x1="37.6" y1="37.6" x2="50" y2="50" stroke="url(#handle)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="49" cy="17" r="3" fill="#7ef0d0" opacity="0.9"/>
 </svg>
