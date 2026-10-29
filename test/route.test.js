@@ -167,6 +167,16 @@ test('without a draft the probe receives no override', async () => {
   assert.equal(received.anytxtUrl, undefined)
 })
 
+test('the page-only route asks the probe for the actionable detail', async () => {
+  // The model-facing status keeps two codes; the cause belongs to this route.
+  let received
+  await statusHandler({ method: 'GET', url: '/dsh-local-search/api/status' }, fakeResponse(), async (options) => {
+    received = options
+    return { everything: { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' }, anytxt: { ok: true } }
+  })
+  assert.equal(received.detail, true)
+})
+
 test('the route registers as an exact route on the declared path', () => {
   const registered = []
   const server = {

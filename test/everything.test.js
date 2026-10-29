@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildEsArgs, decodeEs, esCandidates, parseEsJson } from '../lib/everything.js'
+import {
+  buildEsArgs,
+  decodeEs,
+  esCandidates,
+  everythingCandidates,
+  isFailedExit,
+  parseEsJson,
+  withoutExcludedPaths,
+} from '../lib/everything.js'
 
 test('buildEsArgs keeps the model text after -- and scopes with -path', () => {
   const dir = process.cwd()
@@ -29,17 +37,33 @@ test('buildEsArgs rejects empty queries and missing dirs', () => {
   assert.throws(() => buildEsArgs({ query: 'x', dir: 'D:\\no-such-dir-xyz' }), /existing absolute directory/)
 })
 
-test('parseEsJson maps rows and filters VCS/system noise', () => {
+test('parseEsJson maps every row and leaves the exclusion filter to its caller', () => {
   const json = JSON.stringify([
     { filename: 'D:\\docs\\a.pdf', size: 10, date_modified: 134368593493822223 },
     { filename: 'D:\\$RECYCLE.BIN\\x.pdf', size: 1, date_modified: 1 },
     { filename: 'D:\\System Volume Information\\y.pdf', size: 1, date_modified: 1 },
   ])
   const rows = parseEsJson(json)
-  assert.equal(rows.length, 1)
+  // The cap is measured before filtering, so parsing keeps everything.
+  assert.equal(rows.length, 3)
   assert.equal(rows[0].path, 'D:\\docs\\a.pdf')
   assert.equal(rows[0].size, 10)
   assert.match(rows[0].modified, /^\d{4}-\d{2}-\d{2}T/)
+  assert.deepEqual(withoutExcludedPaths(rows).map((row) => row.path), ['D:\\docs\\a.pdf'])
+})
+
+test('an empty stdout makes exit 1 a failure, a real answer keeps it a result', () => {
+  // es.exe exits 1 both for "nothing matched" and for a dead connection.
+  assert.equal(isFailedExit(0, ''), false)
+  assert.equal(isFailedExit(1, '[]'), false)
+  assert.equal(isFailedExit(1, ''), true)
+  assert.equal(isFailedExit(2, '[]'), true)
+})
+
+test('everythingCandidates names both Program Files locations', () => {
+  const candidates = everythingCandidates()
+  assert.equal(candidates.length, 2)
+  assert.ok(candidates.every((path) => path.endsWith('Everything\\Everything.exe')))
 })
 
 test('parseEsJson handles empty output and rejects non-arrays', () => {

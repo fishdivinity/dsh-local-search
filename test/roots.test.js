@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { defaultAllRoots, parseAllRoots, rootsFor } from '../lib/roots.js'
+import { dedupeRoots, defaultAllRoots, parseAllRoots, rootsFor } from '../lib/roots.js'
 
 test('parseAllRoots splits and trims semicolon lists', () => {
   assert.deepEqual(parseAllRoots('C:\\; D:\\;'), ['C:\\', 'D:\\'])
@@ -36,4 +36,16 @@ test('defaultAllRoots returns existing drive roots', () => {
   const roots = defaultAllRoots()
   assert.ok(roots.length > 0)
   assert.ok(roots.every((root) => /^[A-Z]:\\$/.test(root)))
+})
+
+test('dedupeRoots drops a root nested in another, so nothing is counted twice', () => {
+  assert.deepEqual(dedupeRoots(['D:\\Alpha', 'D:\\Alpha\\nested', 'E:\\Beta']), ['D:\\Alpha', 'E:\\Beta'])
+  // A trailing separator and case do not make two different trees.
+  assert.deepEqual(dedupeRoots(['D:\\Alpha\\', 'd:\\alpha']), ['D:\\Alpha\\'])
+  // A sibling whose name merely starts with the same letters is not nested.
+  assert.deepEqual(dedupeRoots(['D:\\Alpha', 'D:\\Alphabet']), ['D:\\Alpha', 'D:\\Alphabet'])
+  // A drive root contains every other path on that drive.
+  assert.deepEqual(dedupeRoots(['D:\\', 'D:\\Alpha']), ['D:\\'])
+  // Forward slashes name the same tree on Windows.
+  assert.deepEqual(dedupeRoots(['D:/Alpha', 'D:\\Alpha\\nested']), ['D:/Alpha'])
 })

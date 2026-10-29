@@ -1,6 +1,6 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only, with a configuration page on the Plugins page.",
   "type": "module",
   "main": "lib/index.js",
@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/probe.js && node --check lib/route.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs",
+    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/limits.js && node --check lib/probe.js && node --check lib/route.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "keywords": [

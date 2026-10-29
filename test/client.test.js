@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { STATUS_ROUTE } from '../lib/route.js'
+import { isLoopbackUrl } from '../lib/config.js'
+import { MAX_LIMIT, MAX_READ } from '../lib/limits.js'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
 const packageUrl = new URL('../package.json', import.meta.url)
@@ -124,6 +126,21 @@ test('a primitive missing from an older deployment falls back instead of throwin
 test('the Test control asks the Host route this package registers', () => {
   const { mod } = loadBundle()
   assert.equal(mod.STATUS_ROUTE, STATUS_ROUTE)
+})
+
+test('the page mirrors the Host loopback hosts and the schema caps', () => {
+  // The bundle cannot import lib/config.js or lib/limits.js, so these two lists
+  // are the shipped duplicates: this test is what keeps them equal.
+  const { mod } = loadBundle()
+  for (const host of mod.LOOPBACK_HOSTS) {
+    // IPv6 literals need brackets in a URL, which the Host strips before comparing.
+    const authority = host === '::1' ? '[::1]' : host
+    assert.equal(isLoopbackUrl(`http://${authority}:9920`), true, host)
+    assert.equal(isLoopbackUrl(`https://${authority}`), true, host)
+  }
+  assert.equal(new Set(mod.LOOPBACK_HOSTS).size, mod.LOOPBACK_HOSTS.length)
+  assert.equal(isLoopbackUrl('http://example.com:9920'), false)
+  assert.deepEqual(mod.LIMITS, { maxResults: MAX_LIMIT, readMaxChars: MAX_READ })
 })
 
 test('the package icon is wired through the manifest and stays multi-colour', () => {

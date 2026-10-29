@@ -21,6 +21,9 @@ test('formatFiles renders items, sizes, dates, and the capped header', () => {
 
 test('formatFiles handles an empty result', () => {
   assert.equal(formatFiles({ items: [], truncated: false }), 'No files found.')
+  // Everything was capped before the index filter, so the window can be empty
+  // while matches existed: say so rather than claim there are none.
+  assert.match(formatFiles({ items: [], truncated: true }), /No files found in the returned window/)
 })
 
 test('formatContent renders refs and total', () => {
@@ -71,4 +74,15 @@ test('formatStatus shows both engines and roots', () => {
   assert.match(text, /Everything: OK \(1\.4\.1\.1030\)/)
   assert.match(text, /Anytxt: DOWN — ANYTXT_DOWN: not running/)
   assert.match(text, /all=C:\\,D:\\/)
+})
+
+test('a cancelled probe reads as ABORTED, not as a dead engine', () => {
+  const text = formatStatus({
+    everything: { ok: false, code: 'EVERYTHING_ABORTED', message: 'aborted' },
+    anytxt: { ok: false, code: 'ANYTXT_ABORTED', message: 'aborted' },
+    roots: {},
+  })
+  assert.match(text, /Everything: ABORTED — EVERYTHING_ABORTED/)
+  assert.match(text, /Anytxt: ABORTED — ANYTXT_ABORTED/)
+  assert.doesNotMatch(text, /DOWN/)
 })
