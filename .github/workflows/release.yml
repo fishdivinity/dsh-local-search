@@ -38,6 +38,19 @@ jobs:
             exit 1
           }
 
+      - name: Verify release notes use absolute links
+        shell: bash
+        run: |
+          notes="docs/releases/$GITHUB_REF_NAME.md"
+          # A Release body has no file path to resolve against, so a relative
+          # link 404s on the published page even though it works in the repo view.
+          relative="$(grep -nE '\]\((\.{1,2}/|[A-Za-z0-9_./-]+\.md)' "$notes" || true)"
+          test -z "$relative" || {
+            echo "$relative"
+            echo "relative link in $notes; use https://github.com/fishdivinity/dsh-local-search/blob/main/<path>"
+            exit 1
+          }
+
       - run: npm test
       - run: npm run check
 
