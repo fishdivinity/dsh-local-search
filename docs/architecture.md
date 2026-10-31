@@ -143,6 +143,19 @@ These constraints hold the page together:
   a UI skin restyles it for free. `Toast` and `Modal` are optional: a deployment
   whose primitives lacks them gets no engine notice and no dialog, because the
   package ships no stylesheet for a hand-rolled overlay.
+- **The client manifest names services, not the primitives module.**
+  `dsh.client.inject` lists `@deepseek-ai/dsh-client-locale`, `-ui-slots` and
+  `-ui-plugin-manager`; `@deepseek-ai/dsh-client-ui-primitives` is absent because the
+  shell's module table already seeds it — the way `dsh-github` requires it without
+  declaring it. A name here only orders activation (one without a graph row is
+  skipped), so the module arrives through `require`, and a table without that seed
+  throws instead. The bundle therefore wraps the `require`: the card falls back to one
+  line naming the missing UI module, while the tools and a hand-written profile row
+  keep working. Requiring a Harness Client package at all is a known debt — the
+  authoring guide asks plugins to copy the controls instead — and it goes away only
+  when the page stops borrowing components. The half itself declares
+  `exports.inject = ['slots', 'locale']`, which keeps `apply` unrun until both
+  services exist; no in-code guard repeats that.
 - **Two read-only routes share one guard.** A page cannot POST to the local
   Anytxt JSON-RPC (cross-origin on both sides), and it cannot know which backends
   the Host registered, so the Host serves `GET /dsh-local-search/api/status` and

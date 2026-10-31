@@ -16,6 +16,7 @@ const patch = readFileSync(patchUrl, 'utf8')
  * 像客户端模块系统那样加载发布出去的 bundle：普通脚本 + 打桩的 `require`。
  * @param options - `buttonAsForwardRef` 复刻真实 primitives（`Button` 是 `forwardRef(...)`，
  * 因此是对象而不是函数）；`omit` 去掉一个 primitive，模拟更旧的部署；`toast` 加上 `Toast`；
+ * `primitivesModule: false` 让宿主干脆没暴露这个包（`require` 抛异常）；
  * `hooks` 换掉默认的静态 hooks，用一套会真的重渲染的实现
  */
 function loadBundle(options = {}) {
@@ -51,6 +52,7 @@ function loadBundle(options = {}) {
     },
     '@deepseek-ai/dsh-client-ui-primitives': primitives,
   }
+  if (options.primitivesModule === false) delete stubs['@deepseek-ai/dsh-client-ui-primitives']
   const mod = definition.factory((spec) => {
     if (!(spec in stubs)) throw new Error(`unexpected require: ${spec}`)
     return stubs[spec]
@@ -288,6 +290,40 @@ test('the page renders the form even though Button is a forwardRef object', () =
   assert.equal(tree.type, stubs['@deepseek-ai/dsh-client-ui-primitives'].SettingsForm)
 })
 
+test('the client manifest asks for services, not for the primitives module', () => {
+  // inject 里每一个名字都是宿主得有的**包**：模块系统按它排激活顺序，名字没有对应行就跳过，
+  // 不会因此丢掉这半边。primitives 走宿主模块表里的静态种子（`dsh-github` 连声明都没有），
+  // 声明它只多一条需要维护的名字。
+  const injected = manifest.dsh.client.inject
+  assert.deepEqual(injected, [
+    '@deepseek-ai/dsh-client-locale',
+    '@deepseek-ai/dsh-client-ui-slots',
+    '@deepseek-ai/dsh-client-ui-plugin-manager',
+  ])
+  assert.ok(!injected.includes('@deepseek-ai/dsh-client-ui-primitives'))
+})
+
+test('a host that never exposed the primitives module shows a line instead of throwing', () => {
+  // 部署的模块表里没有 primitives（0.2.x 早期不把它当独立模块给客户端）：`require` 抛异常会
+  // 让这半边连卡片带服务一起消失。降级成一行说明，工具与 profile 里的配置仍然可用；原因进一条 warn。
+  const warnings = []
+  const original = console.warn
+  console.warn = (message) => { warnings.push(String(message)) }
+  let mod
+  try {
+    ({ mod } = loadBundle({ primitivesModule: false }))
+  } finally {
+    console.warn = original
+  }
+  const form = { state: { value: {}, user: {}, writable: true }, mutate: async () => true }
+  const tree = mod.ConfigPage({ t: (key) => key, form, view: 'page' })
+  assert.equal(tree.type, 'p')
+  assert.equal(tree.props.role, 'status')
+  assert.equal(flatText(tree), 'primitivesMissing')
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /dsh-local-search/)
+})
+
 test('the page leaves the loading line once the description arrives', async () => {
   // 回归：describe 请求曾经自己把状态改成 loading，而那个状态又在依赖数组里。React 先提交
   // 那一帧、跑掉 cleanup（把本次请求的 live 置 false），再跑一次已经被守卫挡住的 effect，
@@ -495,6 +531,7 @@ test('a primitive missing from an older deployment falls back instead of throwin
   const { mod } = loadBundle({ omit: 'SegmentedControl' })
   const tree = mod.ConfigPage({ t: (key) => key, form: { state: { value: {}, user: {} } }, view: 'page' })
   assert.equal(tree.type, 'p')
+  assert.equal(flatText(tree), 'primitivesMissing')
 })
 
 test('fields carry no badge or per-field reset; three candidate reset rows share one handler', async () => {
@@ -999,7 +1036,7 @@ test('both dictionaries carry every key the Host describe asks the page to rende
   }
   // 表单外壳与测试控件用到的键。
   for (const key of [
-    'unavailable', 'readOnly', 'saveFailed', 'save', 'saving', 'invalidValue', 'invalidNumber',
+    'unavailable', 'primitivesMissing', 'autoconfigFailed', 'readOnly', 'saveFailed', 'save', 'saving', 'invalidValue', 'invalidNumber',
     'invalidFile', 'invalidDir', 'invalidLocal',
     'description', 'note', 'itemLabel', 'describeLoading', 'describeFailed', 'retry',
     'saveAnyway', 'saveAnywayTitle', 'saveBlockedTitle', 'saveEngineDown', 'saveNoWrite',
