@@ -9,7 +9,7 @@ test('parseAllRoots splits and trims semicolon lists', () => {
 
 test('rootsFor defaults to the workspace root', () => {
   const cwd = process.cwd()
-  assert.deepEqual(rootsFor('workspace', undefined, { workspaceRoot: cwd }, cwd), [cwd])
+  assert.deepEqual(rootsFor('workspace', undefined, { scopes: { workspaceRoot: cwd } }, cwd), [cwd])
   assert.deepEqual(rootsFor(undefined, undefined, {}, cwd), [cwd])
 })
 
@@ -40,12 +40,12 @@ test('defaultAllRoots returns existing drive roots', () => {
 
 test('dedupeRoots drops a root nested in another, so nothing is counted twice', () => {
   assert.deepEqual(dedupeRoots(['D:\\Alpha', 'D:\\Alpha\\nested', 'E:\\Beta']), ['D:\\Alpha', 'E:\\Beta'])
-  // A trailing separator and case do not make two different trees.
+  // 尾部分隔符与大小写写不出第二棵树。
   assert.deepEqual(dedupeRoots(['D:\\Alpha\\', 'd:\\alpha']), ['D:\\Alpha\\'])
-  // A sibling whose name merely starts with the same letters is not nested.
+  // 名字只是前缀相同的兄弟目录不算嵌套。
   assert.deepEqual(dedupeRoots(['D:\\Alpha', 'D:\\Alphabet']), ['D:\\Alpha', 'D:\\Alphabet'])
-  // A drive root contains every other path on that drive.
+  // 盘根吞掉该盘上的所有路径。
   assert.deepEqual(dedupeRoots(['D:\\', 'D:\\Alpha']), ['D:\\'])
-  // Forward slashes name the same tree on Windows.
+  // 在 Windows 上正斜杠指的是同一棵树。
   assert.deepEqual(dedupeRoots(['D:/Alpha', 'D:\\Alpha\\nested']), ['D:/Alpha'])
 })

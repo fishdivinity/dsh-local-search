@@ -78,3 +78,26 @@ test('anytxtStatus reports DOWN when fetch fails', async () => {
   assert.equal(status.ok, false)
   assert.equal(status.code, 'ANYTXT_DOWN')
 })
+
+test('anytxtStatus reports the port that answered, not the one tried first', async () => {
+  // 自动配置要把「哪个端口能用」写回配置；报第一个尝试的端口等于把结论写反。
+  const tried = []
+  const status = await anytxtStatus({
+    url: 'http://127.0.0.1:9920',
+    fetchImpl: async (url) => {
+      tried.push(url)
+      if (url === 'http://127.0.0.1:9920') {
+        const refused = new Error('refused')
+        refused.name = 'TypeError'
+        throw refused
+      }
+      return {
+        ok: true,
+        json: async () => ({ jsonrpc: '2.0', id: 1, result: { data: { output: { count: 1 } } } }),
+      }
+    },
+  })
+  assert.equal(tried.length, 2, 'both ports are tried')
+  assert.equal(status.ok, true)
+  assert.equal(status.url, 'http://127.0.0.1:9921')
+})

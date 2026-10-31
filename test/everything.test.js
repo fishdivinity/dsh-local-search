@@ -44,7 +44,7 @@ test('parseEsJson maps every row and leaves the exclusion filter to its caller',
     { filename: 'D:\\System Volume Information\\y.pdf', size: 1, date_modified: 1 },
   ])
   const rows = parseEsJson(json)
-  // The cap is measured before filtering, so parsing keeps everything.
+  // 上限在过滤之前就量过了，所以解析这一层必须原样留下全部行。
   assert.equal(rows.length, 3)
   assert.equal(rows[0].path, 'D:\\docs\\a.pdf')
   assert.equal(rows[0].size, 10)
@@ -53,7 +53,7 @@ test('parseEsJson maps every row and leaves the exclusion filter to its caller',
 })
 
 test('an empty stdout makes exit 1 a failure, a real answer keeps it a result', () => {
-  // es.exe exits 1 both for "nothing matched" and for a dead connection.
+  // es.exe 在「没有命中」和「连不上 Everything」时都退 1，只能靠 stdout 分辨。
   assert.equal(isFailedExit(0, ''), false)
   assert.equal(isFailedExit(1, '[]'), false)
   assert.equal(isFailedExit(1, ''), true)

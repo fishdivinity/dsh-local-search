@@ -1,6 +1,6 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only, with a configuration page on the Plugins page.",
   "type": "module",
   "main": "lib/index.js",

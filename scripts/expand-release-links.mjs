@@ -1,39 +1,37 @@
 #!/usr/bin/env node
 /**
- * Expand relative links in a release-notes file into absolute GitHub URLs.
+ * 把发布说明里的相对链接展开成 GitHub 绝对 URL。
  *
- * The repository copy keeps `../../CHANGELOG.md`, which resolves on a blob page
- * and stays correct if the repository moves. A Release body has no file path to
- * resolve against, so the same text 404s there. The release workflow runs this
- * script and publishes its output, so one source stays readable and the other
- * stays clickable.
+ * 仓库里那份保留 `../../CHANGELOG.md`：在 blob 页面上能解析，仓库改名搬家也不会失效。
+ * Release 正文没有文件路径可供解析，同一段文字在那里就是 404。发版 workflow 跑这个
+ * 脚本并发布它的输出，于是源文件保持可读，发布出去的那份保持可点。
  *
- * Usage: node scripts/expand-release-links.mjs <notes.md> <out.md>
- * Environment: GITHUB_REPOSITORY (`owner/repo`), GITHUB_REF_NAME (`v0.2.0`).
+ * 用法：node scripts/expand-release-links.mjs <notes.md> <out.md>
+ * 环境变量：GITHUB_REPOSITORY（`owner/repo`）、GITHUB_REF_NAME（`v0.2.0`）。
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, normalize, posix } from 'node:path'
 
-/** `<target>` of a markdown link or image, leaving titles untouched. */
+/** markdown 链接或图片里的 `<target>`，`title` 不参与匹配。 */
 const LINK = /(!?\[[^\]]*\]\()([^)\s]+)(\))/g
 
 /**
- * Whether a link target already stands on its own.
- * @param target - the raw markdown target
- * @returns true for an absolute URL, a protocol-relative URL, or an anchor
+ * 目标是否已经自带前缀、不需要再改写。
+ * @param target - markdown 里原样的目标
+ * @returns 绝对 URL、协议相对 URL 与锚点都是 true
  */
 export function isAbsoluteTarget(target) {
   return /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)
 }
 
 /**
- * Rewrite every relative link in a notes file to a `blob/<tag>` URL.
- * @param source - the markdown text
- * @param options.notesPath - repo-relative path of the notes file
+ * 把说明文件里的每个相对链接改写成 `blob/<tag>` URL。
+ * @param source - markdown 文本
+ * @param options.notesPath - 说明文件在仓库内的相对路径
  * @param options.repository - `owner/repo`
- * @param options.tag - the release tag the links should resolve against
- * @returns the rewritten markdown
+ * @param options.tag - 链接要解析到的发布 tag
+ * @returns 改写后的 markdown
  */
 export function expandLinks(source, { notesPath, repository, tag }) {
   const baseDirectory = posix.dirname(notesPath.split('\\').join('/'))

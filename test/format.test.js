@@ -21,8 +21,8 @@ test('formatFiles renders items, sizes, dates, and the capped header', () => {
 
 test('formatFiles handles an empty result', () => {
   assert.equal(formatFiles({ items: [], truncated: false }), 'No files found.')
-  // Everything was capped before the index filter, so the window can be empty
-  // while matches existed: say so rather than claim there are none.
+  // Everything 在索引过滤之前就截断了，所以命中存在时窗口也可能是空的：
+  // 这种时候要说明，而不是断言没有文件。
   assert.match(formatFiles({ items: [], truncated: true }), /No files found in the returned window/)
 })
 
@@ -43,7 +43,7 @@ test('formatFragments joins snippets and handles empty', () => {
 
 test('formatRead reports the total and the shown window', () => {
   const text = formatRead({ text: 'hello', totalChars: 10, offset: 2, returned: 5 })
-  // Inclusive end, so 5 characters starting at 2 read as 2..6.
+  // 终点是闭区间，所以从 2 起的 5 个字符读作 2..6，两个数可以直接相减。
   assert.match(text, /chars 10; showing 2\.\.6/)
   assert.match(text, /hello/)
 })

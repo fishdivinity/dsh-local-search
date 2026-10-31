@@ -2,7 +2,8 @@
 # Every key has a schema default; override any of them here by replacing this
 # row's config (the whole row is replaced, never deep-merged).
 # Keep this file neutral (config: {}) in the package: machine-specific paths
-# such as esPath / workRoot belong in the user's profile patch, not here.
+# such as files.everything.esPath / scopes.workRoot belong in the user's
+# profile patch, not here.
 - insert:
     - id: fishdivinity-local-search
       name: '@fishdivinity/dsh-local-search'

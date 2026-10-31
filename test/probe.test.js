@@ -16,6 +16,6 @@ test('an absent Everything reads as not-installed, whatever es.exe did', () => {
 })
 
 test('a check that could not run reads as unknown, never as not-installed', () => {
-  // Telling someone to install what they already have is worse than a vague hint.
+  // 让人去装一个已经装好的东西，比给一句含糊的提示更糟。
   assert.equal(diagnoseEverything('EVERYTHING_DOWN', { installed: false, known: false }), 'unknown')
 })
