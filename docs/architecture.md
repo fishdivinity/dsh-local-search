@@ -215,11 +215,13 @@ These constraints hold the page together:
   the pass never runs again, so a field the user cleared stays cleared instead of
   being refilled. A complete configuration skips the probe and only pins that
   marker, which is why there is no startup cost after the first run. A migration the
-  settings layer refuses (a home patch overriding the profile) only logs a warning
-  and leaves the flat keys in place, which `readConfig` still reads, so the plugin
-  keeps working. Every shape change is one row in `RETIRED_PATHS`, and all three
-  consumers (read fallback, the hidden schema keys, the startup migration) share that
-  list, so a profile may skip any number of versions: see `docs/config-migration.md`.
+  settings layer refuses (a home patch overriding the profile) leaves the flat keys in
+  place, which `readConfig` still reads, so the plugin keeps working; either write's
+  refusal puts its reason in `autoconfig.error`, which the page prints under the
+  description and the log keeps as a warning. Every shape change is one row in
+  `RETIRED_PATHS`, and all three consumers (read fallback, the hidden schema keys,
+  the startup migration) share that list, so a profile may skip any number of
+  versions: see `docs/config-migration.md`.
   A probe that finds an engine down reports it in the payload's
   `autoconfig` block, and the page shows one `Toast` per browser session.
 

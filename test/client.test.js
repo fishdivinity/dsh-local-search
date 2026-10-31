@@ -391,6 +391,29 @@ test('every control carries the name a browser needs before it stays quiet', asy
   }
 })
 
+test('a failed startup write is shown on the page, not only in the log', async () => {
+  // 回归：`autoconfig.error` 一直没进 describe，写回失败只落一条用户不会去看的日志。
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const original = globalThis.fetch
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => describeConfig({ error: 'SETTINGS_CONFLICT: the namespace is locked' }),
+  })
+  try {
+    const page = mountPage(mod, hooks)
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+    const notice = findElement(page.tree(), (node) => node.props?.role === 'alert')
+    assert.ok(notice !== undefined, 'the failure must be visible on the page')
+    assert.match(flatText(notice), /autoconfigFailed/)
+    assert.match(flatText(notice), /SETTINGS_CONFLICT/)
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
 test('a failed description fetch leaves a retry instead of the loading line', async () => {
   const hooks = liveHooks()
   const { mod } = loadBundle({ hooks: hooks.react })
