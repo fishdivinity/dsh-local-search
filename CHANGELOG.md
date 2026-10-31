@@ -2,6 +2,12 @@
 
 本文件中文；英文全量在 [CHANGELOG.en.md](CHANGELOG.en.md)。0.2.1 及更早的条目保留发布时的英文原文，0.3.0 起两边各写一份。
 
+## 0.3.1 — 2026-10-31
+
+- `page`: 配置卡片不再因界面模块缺失而整块消失——`require('@deepseek-ai/dsh-client-ui-primitives')` 抛异常会连整个浏览器半边一起带走，现在包在 `try`/`catch` 里：缺模块时退成一行「本部署没有这个界面控件」，并在 console 留一条原因，工具与 profile 里的配置照旧可用。`dsh.client.inject` 也去掉了 primitives——它由宿主的模块表直接给，声明只排激活顺序（宿主没有对应的行就跳过），本来就不是硬依赖。
+- `page`: 启动时的配置写回失败现在显示在页面描述下方，而不是只写一条用户不会去看的日志——`/api/describe` 的 `autoconfig.error` 之前一直被丢掉（迁移被拒也走这条）。
+- `page`: 两个后端选择器补上各自的 `id`：原来 DOM 里是 `undefined-everything` / `undefined-anytxt`，同一个字段的 `label` 与 `aria-controls` 都指着它，再注册一个后端还会撞 id。新增一条测试钉住「每个控件都带浏览器要的可访问名（id + label）」。
+
 ## 0.3.0 — 2026-10-31
 
 **配置键迁移**：`esPath`、`esEncoding`、`anytxtUrl`、`workspaceRoot`、`workRoot`、`personalRoot`、`allRoots`、`maxResults`、`readMaxChars` 从顶层搬进 `files.*` / `content.*` / `scopes.*` / `limits.*`。启动时把旧键读进新结构并清掉旧键；写入被 home patch 覆盖时旧键保留，读侧继续认它。0.2 的 profile 不需要手改。

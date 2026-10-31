@@ -2,6 +2,12 @@
 
 Chinese entries live in [CHANGELOG.md](CHANGELOG.md). Entries up to 0.2.1 keep the English they shipped with; 0.3.0 onward is written in both files.
 
+## 0.3.1 — 2026-10-31
+
+- `page`: the configuration card no longer disappears when the UI module is missing — a throwing `require('@deepseek-ai/dsh-client-ui-primitives')` used to take the whole browser half with it. It is wrapped in `try`/`catch` now: the card falls back to one line saying this deployment lacks the controls, with the reason in the console, and the tools plus a hand-written profile row keep working. `dsh.client.inject` also no longer lists the primitives module — the shell's module table supplies it, and a name there only orders activation (one without a graph row is skipped), so it was never a hard requirement.
+- `page`: a failed startup config write is now shown under the page description instead of only in a log the user never reads — `/api/describe` used to drop `autoconfig.error` (a refused migration lands there too).
+- `page`: both backend selectors now carry their own `id`. The DOM used to hold `undefined-everything` / `undefined-anytxt`, which the field's `label` and `aria-controls` both pointed at, and a second registered backend would have collided. A new test pins "every control carries the id and label a browser needs".
+
 ## 0.3.0 — 2026-10-31
 
 **Configuration keys moved**: `esPath`, `esEncoding`, `anytxtUrl`, `workspaceRoot`, `workRoot`, `personalRoot`, `allRoots`, `maxResults`, `readMaxChars` leave the top level for `files.*` / `content.*` / `scopes.*` / `limits.*`. At startup the old keys are read into the new shape and cleared; where a home patch overrides the write they stay and the read side keeps honouring them. A 0.2 profile needs no edit.
