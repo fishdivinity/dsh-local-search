@@ -5,3 +5,5 @@ coverage/
 .DS_Store
 .env
 notes/
+AGENTS.md
+test/fixtures/local.*
