@@ -171,19 +171,30 @@ function sectionTitles(tree) {
     .map((child) => child.props.title)
 }
 
+/**
+ * 在渲染树里收集所有满足条件的元素。
+ *
+ * `children` 走一遍，props 里挂的子树也要走：`Section` 的选择器与页脚、`Modal` 的页脚都是当 prop
+ * 传进去的，只走 `children` 会漏掉它们。只认带 `type` 的节点，样式对象之类的普通对象直接跳过。
+ */
+function collectElements(tree, predicate, found = []) {
+  if (tree === null || tree === undefined) return found
+  if (Array.isArray(tree)) {
+    for (const child of tree) collectElements(child, predicate, found)
+    return found
+  }
+  if (typeof tree !== 'object' || tree.type === undefined) return found
+  if (predicate(tree)) found.push(tree)
+  collectElements(tree.children, predicate, found)
+  for (const value of Object.values(tree.props ?? {})) {
+    if (value !== null && typeof value === 'object') collectElements(value, predicate, found)
+  }
+  return found
+}
+
 /** 在渲染树里找第一个满足条件的元素（`children` 与 `props.children` 都走）。 */
 function findElement(tree, predicate) {
-  if (tree === null || tree === undefined) return undefined
-  if (Array.isArray(tree)) {
-    for (const child of tree) {
-      const hit = findElement(child, predicate)
-      if (hit !== undefined) return hit
-    }
-    return undefined
-  }
-  if (typeof tree !== 'object') return undefined
-  if (predicate(tree)) return tree
-  return findElement(tree.children, predicate) ?? findElement(tree.props?.children, predicate)
+  return collectElements(tree, predicate)[0]
 }
 
 /** 当前开着的那个 `Modal` 元素（弹窗是页面自己渲染的子元素，props 里带着标题与页脚）。 */
@@ -339,6 +350,42 @@ test('the page leaves the loading line once the description arrives', async () =
     await page.settle(() => sectionTitles(page.tree()).length > 0)
     assert.deepEqual(sectionTitles(page.tree()), ['sectionFiles', 'sectionContent', 'sectionScopes', 'sectionLimits'])
     assert.ok(!flatText(page.tree()).includes('describeLoading'))
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('every control carries the name a browser needs before it stays quiet', async () => {
+  // 浏览器的表单标签检查只认三样：`<label for>` 指向的 id、控件自己的 aria-label 源头、id 的唯一性。
+  // 原件只负责画（`SettingsValueField` → `<label for=id>` + `<input id>`；`SegmentedControl` →
+  // `aria-label` 与按 id 拼出来的 DOM id），值全由页面给，所以这里钉住页面这一侧。
+  //
+  // 只数得到页面直接渲染的那些：`ChoiceField` 里的分段控件要等 React 展开这个函数组件才出现，
+  // 桩不会展开它，所以计数是 8 个文本框 + 2 个后端选择器。
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  const original = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => describeConfig() })
+  try {
+    const page = mountPage(mod, hooks)
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+    const primitives = stubs['@deepseek-ai/dsh-client-ui-primitives']
+    const controls = [
+      ...collectElements(page.tree(), (node) => node.type === primitives.SettingsValueField),
+      ...collectElements(page.tree(), (node) => node.type === primitives.SegmentedControl),
+    ]
+    assert.equal(controls.length, 10)
+    const ids = controls.map((node) => node.props.id)
+    for (const id of ids) {
+      assert.equal(typeof id, 'string', 'a control without an id is a control no label can point at')
+      assert.match(id, /^plugin-config-local-search-/)
+    }
+    assert.equal(new Set(ids).size, ids.length, 'two controls must not share an id')
+    for (const node of controls) {
+      assert.equal(typeof node.props.label, 'string')
+      assert.notEqual(node.props.label, '', 'an empty label is the same as no label')
+    }
   } finally {
     globalThis.fetch = original
   }
