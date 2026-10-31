@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { expandLinks, isAbsoluteTarget } from '../scripts/expand-release-links.mjs'
+import { assertPinnedToTag, expandLinks, isAbsoluteTarget } from '../scripts/expand-release-links.mjs'
 
 const options = { notesPath: 'docs/releases/v0.2.0.md', repository: 'fishdivinity/dsh-local-search', tag: 'v0.2.0' }
 
@@ -38,4 +38,11 @@ test('images are expanded too', () => {
 
 test('a link that escapes the repository is refused instead of published broken', () => {
   assert.throws(() => expandLinks('[x](../../../outside.md)', options), /escapes the repository/)
+})
+
+test('a link pinned to main is refused: the tag is what stays put', () => {
+  const pinned = '[CHANGELOG.md](https://github.com/fishdivinity/dsh-local-search/blob/main/CHANGELOG.md)'
+  assert.throws(() => assertPinnedToTag(pinned, 'v0.3.0'), /not main/)
+  // 指向 tag 的链接照旧放行。
+  assert.doesNotThrow(() => assertPinnedToTag('[x](https://github.com/o/r/blob/v0.3.0/x.md)', 'v0.3.0'))
 })

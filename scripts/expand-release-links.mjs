@@ -48,6 +48,19 @@ export function expandLinks(source, { notesPath, repository, tag }) {
   })
 }
 
+/**
+ * 发布正文里的链接必须钉在自己的 tag 上：`main` 会往前走（CHANGELOG 会在那儿裁切），
+ * tag 不会。手写的 `blob/main` 当场拦下，而不是等读者点进去发现那一版不见了。
+ * @param markdown - 展开后的正文
+ * @param tag - 正在发布的 tag
+ */
+export function assertPinnedToTag(markdown, tag) {
+  const moving = markdown.match(/\/(blob|tree)\/main\//g) ?? []
+  if (moving.length > 0) {
+    throw new Error(`release links must point at ${tag}, not main: ${moving.join(', ')}`)
+  }
+}
+
 function main() {
   const [notesPath, outPath] = process.argv.slice(2)
   const repository = process.env.GITHUB_REPOSITORY
@@ -66,6 +79,7 @@ function main() {
   if (remaining !== undefined && remaining.length > 0) {
     throw new Error(`relative links survived expansion: ${remaining.join(', ')}`)
   }
+  assertPinnedToTag(expanded, tag)
   writeFileSync(outPath, expanded)
   console.log(`expanded release links: ${notesPath} -> ${outPath}`)
 }
