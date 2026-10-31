@@ -7,3 +7,4 @@ coverage/
 notes/
 AGENTS.md
 test/fixtures/local.*
+CODE-REVIEW-*.md
