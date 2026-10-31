@@ -30,7 +30,10 @@ const contentEngines = new Map([
 ])
 ```
 
-`auto` resolves the first entry. Explicit `engine` values resolve by name; an unknown name becomes `ENGINE_UNSUPPORTED`, which the tool layer converts to a `HarnessError`.
+`auto` follows the backend configured for that capability (`files.backend` /
+`content.backend`), so the registry order no longer picks the default. Explicit
+`engine` values resolve by name; an unknown name becomes `ENGINE_UNSUPPORTED`,
+which the tool layer converts to a `HarnessError`.
 
 ## 3. Keep refs unambiguous
 
@@ -45,21 +48,13 @@ const contentEngines = new Map([
 
 A new backend must not change the five tool names. Only `engine` values and registry entries grow.
 
-## Config page debt
+## Configuring a new backend
 
-The registry is engine-agnostic; the configuration page is not. `lib/client.js`
-lays out sections named after the two engines (`esPath` / `esEncoding` under
-Everything, `anytxtUrl` under Anytxt) and the schema's own fields are named
-after them too (`esPath`, `anytxtUrl`, `esEncoding`).
+The page renders what `GET /dsh-local-search/api/describe` reports, so a new backend needs no page logic — only its own rows in four places:
 
-A second backend therefore needs, before it can be configured rather than
-hard-coded:
+- `lib/engines.js`: one entry in `filesEngines` or `contentEngines`. The selector in `lib/describe.js` is built from `engineNames()`, so a registered backend appears there without further edits.
+- `lib/config.js`: its paths in `PATHS` and its defaults in `DEFAULTS`; `lib/schema.js`: one `FIELDS` row per editable value.
+- `lib/describe.js`: an `ENGINE_FIELDS[<capability>][<name>]` entry listing its fields — path, type, label/hint keys, `probeEndpoint: true` on the field the Test button probes, and `verifyPath: true` on a field whose value is a file path the page should confirm exists before saving — plus an `ENGINE_LABEL_KEYS` entry when the product name differs from the registry name.
+- `lib/client.js`: two dictionary strings per field (zh and en), and the backend label when it has a curated name.
 
-- a schema that keeps each engine's settings in a nested object the page can
-  render one section per engine, instead of one flat set of engine-named keys;
-- a page that iterates the registry and renders a section per engine, with the
-  Test control probing that engine's own endpoint;
-- a probe route per engine rather than the current single both-engines probe.
-
-Until then a new engine is configurable only through the profile YAML, exactly
-as the current fields are.
+`test/describe.test.js` fails when a registered backend has no described field, so a registration cannot ship unconfigurable; the same suite checks that every described path resolves in a configuration snapshot.

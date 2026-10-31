@@ -46,7 +46,7 @@
 
 - Windows.
 - DeepSeek Harness `>=0.2.1-0 <0.3.0`.
-- [Everything](https://www.voidtools.com/) running, plus `es.exe` (a separate download from voidtools; the plugin auto-detects PATH/common install folders, or set `esPath`).
+- [Everything](https://www.voidtools.com/) running, plus `es.exe` (a separate download from voidtools; the plugin auto-detects PATH/common install folders, or set `files.everything.esPath`).
 - [Anytxt Searcher](https://anytxt.net/) for content search: the **GUI** (`ATGUI.exe`) must be running because the JSON-RPC service lives inside it. The indexing service alone is not enough.
 
 This plugin does **not** bundle Everything, `es.exe`, or Anytxt. Install and license them separately.
@@ -67,24 +67,34 @@ Restart the profile or open a new session. The five `local_search_*` tools appea
 
 ## Configuration
 
-Sidebar **Plugins** → the **Local Search** card in the **Official plugins** group → the plugin's own page. That is the same card shape the GitHub plugin contributes. Saves apply to the next tool call; leaving the page drops unsaved edits, and a field's reset returns it to the profile layer.
+Sidebar **Plugins** → the **Local Search** card in the **Official plugins** group → the plugin's own page. That is the same card shape the GitHub plugin contributes. Saves apply to the next tool call; leaving the page drops unsaved edits. **Reset**, under the description, first shows what it will clear and only writes once you confirm: the engine and limit settings go, a fresh probe refills them, and the search scopes are left alone because they are paths you typed.
 
-**Test connection**, directly under the Anytxt endpoint, probes that address as typed — nothing has to be saved first — together with Everything, and answers in one line. A failing engine gets a link to its official download page; this plugin never bundles, downloads, or installs either product.
+The page is organised by capability: **File names** and **File contents** each open with a backend picker and show that backend's fields once it is selected; **Search scopes** and **Limits** are the same whichever backend runs, so they close the page. The Host's `GET /dsh-local-search/api/describe` supplies the sections, the registered backends, the field types and the hard caps, and the page only renders them, so a new backend does not change the page logic.
+
+**Test connection** sits under the Anytxt endpoint field. It probes the endpoint as typed — nothing has to be saved first — together with Everything, and puts the result and its fix in a dialog that can probe again. The `es.exe` path in the field is checked too, so a typo there says the file is missing instead of reporting the saved binary as OK. A failing engine gets a link to its official download page; this plugin never bundles, downloads, or installs either product.
+
+**A save checks before it writes.** When the endpoint or the `es.exe` path is part of the edit, the page probes them first: whatever the check refuses is not written, and a dialog asks whether to **Save anyway** — a deliberate exception rather than the default. A hard rejection (no file at that path, no such directory, a rejected address) gets no such way out. The Host only checks that the path exists; it never starts a file named by a request. Path fields and the endpoint are also checked when focus leaves them: a missing path, a directory where a file belongs, or a non-local address is flagged under the input and clears as soon as the value changes.
+
+Path fields are rewritten to one standard spelling on save: `d:/alpha` is stored as `D:\alpha` (upper-case drive letter, backslashes, no trailing separator), and `allRoots` is rewritten entry by entry. When the path exists, the on-disk spelling wins (`d:/alpha` → `D:\Alpha`). Spaces and non-ASCII names are left alone — `D:\Alpha\我的项目\drawio a` is fine as typed, because the Host passes values to `es.exe` and the file APIs without going through a shell.
+
+The first run fills what it can and then stops: while `files.everything.esPath` or `content.anytxt.url` is still unset, the plugin probes once, writes what answered, and records that pass in a hidden `autoConfigured` key. After that a field you clear stays clear instead of being filled again.
 
 Every key is optional, and the row config replaces the whole config object rather than merging. Only `timeoutMs` stays in the profile's `cordis.patch.yml`: each tool fixes its deadline when it registers, so the page leaves it out rather than showing a field that would not take effect.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `esPath` | auto-detect | Absolute path to `es.exe`. Resolution order: `esPath`, `ES_PATH`, common install folders, `where.exe`. |
-| `anytxtUrl` | `http://127.0.0.1:9920` | Anytxt JSON-RPC endpoint on this machine (`127.0.0.1`, `localhost` or `[::1]` only). The default also tries `:9921`. |
-| `workspaceRoot` | session default directory | Root for `scope=workspace`. |
-| `workRoot` | empty | Root for `scope=work`; required before using that scope. |
-| `personalRoot` | empty | Root for `scope=personal`; required before using that scope. |
-| `allRoots` | `C:\` plus `D:\` when present | Semicolon-separated roots for Anytxt `scope=all`. Everything `scope=all` searches all volumes it indexes. |
-| `maxResults` | `20` | Default result cap. Hard cap is 100. |
+| `files.backend` | `everything` | Filename backend `auto` uses. |
+| `files.everything.esPath` | auto-detect | Absolute path to `es.exe`. Resolution order: the configured value, `ES_PATH`, common install folders, `where.exe`. |
+| `files.everything.esEncoding` | `gbk` | Code page used to decode `es.exe` output. Any `TextDecoder` label is accepted; the page offers `gbk` and `utf-8`. |
+| `content.backend` | `anytxt` | Content backend `auto` uses. |
+| `content.anytxt.url` | `http://127.0.0.1:9920` | Anytxt JSON-RPC endpoint on this machine (`127.0.0.1`, `localhost` or `[::1]` only). The default also tries `:9921`. |
+| `scopes.workspaceRoot` | session default directory | Root for `scope=workspace`. |
+| `scopes.workRoot` | empty | Root for `scope=work`; required before using that scope. |
+| `scopes.personalRoot` | empty | Root for `scope=personal`; required before using that scope. |
+| `scopes.allRoots` | `C:\` plus `D:\` when present | Semicolon-separated roots for Anytxt `scope=all`. Everything `scope=all` searches all volumes it indexes. |
+| `limits.maxResults` | `20` | Default result cap; hard cap 100. |
+| `limits.readMaxChars` | `8000` | Default `local_search_read` window; hard cap 20,000 characters. |
 | `timeoutMs` | `30000` | Per-call timeout budget; profile YAML only. |
-| `readMaxChars` | `8000` | Default `local_search_read` window; hard cap is 20,000 characters. |
-| `esEncoding` | `gbk` | Code page used to decode `es.exe` output. The page offers `gbk` and `utf-8` as a two-choice control. |
 
 Example row override:
 
@@ -92,23 +102,27 @@ Example row override:
 - id: fishdivinity-local-search
   name: '@fishdivinity/dsh-local-search'
   config:
-    workRoot: 'D:\Projects'
-    personalRoot: 'D:\Documents'
-    allRoots: 'C:\;D:\'
+    scopes:
+      workRoot: 'D:\Projects'
+      personalRoot: 'D:\Documents'
+    limits:
+      maxResults: 50
 ```
+
+A 0.2 profile needs no hand edit: on startup its nine flat keys (`esPath`, `esEncoding`, `anytxtUrl`, `workspaceRoot`, `workRoot`, `personalRoot`, `allRoots`, `maxResults`, `readMaxChars`) move into the structure above and are removed. When the settings layer refuses that write — a home patch overrides the profile — the old keys stay and are still read.
 
 ## Scopes
 
 - `workspace` (default): the session's working directory.
-- `work`: `workRoot`.
-- `personal`: `personalRoot`.
-- `all`: `allRoots` for Anytxt; all indexed volumes for Everything.
+- `work`: `scopes.workRoot`.
+- `personal`: `scopes.personalRoot`.
+- `all`: `scopes.allRoots` for Anytxt; all indexed volumes for Everything.
 
 Use `all` only when the user explicitly asks for a cross-drive/global search. The `path` argument overrides `scope`.
 
 ## Engine selection
 
-`engine` defaults to `auto`:
+`engine` defaults to `auto`, which follows the backend configured for that capability: `files.backend` for `local_search_files`, `content.backend` for `local_search_content`, `fragments`, and `read`.
 
 - `local_search_files`: `auto` or `everything`.
 - `local_search_content` / `fragments` / `read`: `auto` or `anytxt`.
@@ -122,7 +136,7 @@ Failures are typed `HarnessError`s with stable codes:
 
 | Code | Meaning |
 |---|---|
-| `EVERYTHING_ES_NOT_FOUND` | `es.exe` is missing; install it or set `esPath`. |
+| `EVERYTHING_ES_NOT_FOUND` | `es.exe` is missing; install it or set `files.everything.esPath`. |
 | `EVERYTHING_DOWN` | Everything is not running / cannot be reached. |
 | `EVERYTHING_TIMEOUT`, `EVERYTHING_TOO_LARGE` | Query too broad or slow; narrow it. |
 | `ANYTXT_DOWN` | Anytxt GUI is not running or the JSON-RPC endpoint is unreachable. |
@@ -166,7 +180,7 @@ npm run check
 npm run pack:check
 ```
 
-The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`, `lib/config.js`) are independent of the DSH runtime so their tests run under plain Node. `lib/client.js` ships as the browser half: it is written directly in the client module system's lazy-CJS factory format, so there is no build step. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), and [`.github/RELEASING.md`](.github/RELEASING.md).
+The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`, `lib/config.js`) are independent of the DSH runtime so their tests run under plain Node. `lib/client.js` ships as the browser half: it is written directly in the client module system's lazy-CJS factory format, so there is no build step. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), [`docs/config-migration.md`](docs/config-migration.md) for the rules a config-shape change has to follow, and [`.github/RELEASING.md`](.github/RELEASING.md).
 
 ## Changelog
 

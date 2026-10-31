@@ -54,18 +54,16 @@ After v0.1.0 exists:
 
 Every release tag must have `docs/releases/<tag>.md` (for example `docs/releases/v0.1.1.md`). The workflow fails before publishing if the file is missing, so the GitHub Release never falls back to a generated commit link.
 
-Start from [`docs/releases/TEMPLATE.md`](../docs/releases/TEMPLATE.md) and write:
+Start from [`docs/releases/TEMPLATE.md`](../docs/releases/TEMPLATE.md) and follow its order:
 
-- highlights: the user-visible outcome;
-- grouped changes: search, scopes, engines, security, docs;
-- install/upgrade command;
-- compatibility and engine prerequisite changes;
-- a full-changelog link at the end, not as the entire body.
+- Chinese first, English after; both halves say the same thing;
+- five sections per half: 这版做了什么 / 怎么做到的 / 升级 / 兼容 / 完整变更 (`What changed` / `How` / `Upgrade` / `Compatibility` / `Full changelog`);
+- a summary, not an itemised list: `CHANGELOG.md` is the full record, so the two must not restate each other.
 
 ## Later releases (agent can do this)
 
 1. Bump `version` in `package.json`, add a `CHANGELOG.md` entry, and add `docs/releases/vX.Y.Z.md`.
-2. Run `npm test`, `npm run check`, and `npm run pack:check`.
+2. Run `npm test`, `npm run check`, `npm run privacy`, and `npm run pack:check`. CI runs the same four.
 3. Commit and push `main`.
 4. Tag and push:
 

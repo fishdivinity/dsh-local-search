@@ -45,7 +45,7 @@
 
 - Windows。
 - DeepSeek Harness `>=0.2.1-0 <0.3.0`。
-- Everything 正在运行，并安装 `es.exe`（voidtools 单独下载；插件会从 PATH/常见目录探测，也可配置 `esPath`）。
+- Everything 正在运行，并安装 `es.exe`（voidtools 单独下载；插件会从 PATH/常见目录探测，也可配置 `files.everything.esPath`）。
 - 内容检索需要 Anytxt Searcher 的 **GUI**（`ATGUI.exe`）在运行；JSON-RPC 服务在 GUI 进程里，只有 `ATService` 不够。
 
 插件不打包 Everything、`es.exe` 或 Anytxt，需自行安装并遵守各自许可。
@@ -66,24 +66,34 @@ dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
 
 ## 配置
 
-侧边栏 **Plugins** → **Official plugins** 组里的「本地搜索」卡片 → 插件自己的页面。这张卡和 GitHub 插件那张是同一个形态。保存后对下一次工具调用生效；离开页面丢弃未保存改动，字段上的「重置」把它交回 profile 层。
+侧边栏 **Plugins** → **Official plugins** 组里的「本地搜索」卡片 → 插件自己的页面。这张卡和 GitHub 插件那张是同一个形态。保存后对下一次工具调用生效；离开页面丢弃未保存改动。描述下面那个**重置**会先把会清什么摆出来，确认后才清掉引擎与上限、按一次新的探测填回去；检索范围不动，因为那是你自己敲进去的路径。
 
-**测试连接**就放在 Anytxt 地址输入框下面，测的是**输入框里当前的地址**（不用先保存），同时把 Everything 一起探一遍，一行给结果。某个引擎不可用时会给出它的官方下载页；本插件不打包、不下载、也不代替你安装这两个程序。
+页面按能力组织：「文件名检索」与「文件内容检索」各以一行后端选择器开头，选中后展开该后端的字段；「检索范围」与「上限」与后端无关，收在页尾。分节、后端列表、字段类型与硬上限都由 Host 的 `GET /dsh-local-search/api/describe` 给出，页面只负责渲染，新增后端不用改页面逻辑。
+
+**测试连接**就放在 Anytxt 地址字段下面，测的是**输入框里当前的地址和 `es.exe` 路径**（不用先保存），同时把 Everything 一起探一遍：路径打错就直接说找不到文件，不会拿已保存的那个报「正常」。结果与修法在一个弹窗里，弹窗还能再测一次。某个引擎不可用时会给出它的官方下载页；本插件不打包、不下载、也不代替你安装这两个程序。
+
+**保存前会先校验。** 只要这次保存动了地址或 `es.exe` 路径，页面就先把它们探一遍：不通过就不写，弹窗问你要不要「仍然保存」——那是你明知的例外，而不是默认结果；路径上没有文件、目录不存在、地址被拒这类硬错没有强行写入的出口。路径那一项 Host 只查「文件在不在」，绝不启动请求里指定的文件。路径字段与 Anytxt 地址都在**失焦时**先校验一次：不存在、把目录填成文件、地址不是本机，都会在字段下面标红，改掉就收回。
+
+路径字段保存时会改成标准写法：`d:/alpha` 存成 `D:\alpha`（盘符大写、反斜杠、去掉末尾分隔符），`allRoots` 按分号逐项改；路径存在时还会按磁盘上的真实大小写写回（`d:/alpha` → `D:\Alpha`）。名字里的空格与中文不动——`D:\Alpha\我的项目\drawio a` 这样带空格的目录名照写就行，宿主按值传给 `es.exe` 与文件接口，不经过 shell。
+
+首用只补一次就停：`files.everything.esPath` 或 `content.anytxt.url` 还空着时，插件探一次、把能应答的写进去，并在隐藏键 `autoConfigured` 里记下这次已经做过决定。之后你清空的字段会保持空着，不会再被自动填回去。
 
 全部可选；row config 是整块替换，不会深合并。只有 `timeoutMs` 留在 profile 的 `cordis.patch.yml`：每个工具在注册时就固定截止时间，因此页面上不提供这个字段，免得出现“改了没反应”。
 
-| 字段 | 默认 | 说明 |
+| 键 | 默认 | 说明 |
 |---|---|---|
-| `esPath` | 自动探测 | `es.exe` 绝对路径。顺序：`esPath` → `ES_PATH` → 常见安装目录 → `where.exe` |
-| `anytxtUrl` | `http://127.0.0.1:9920` | 本机 Anytxt JSON-RPC 地址（只接受 `127.0.0.1`、`localhost`、`[::1]`）；默认还会尝试 `:9921` |
-| `workspaceRoot` | 会话默认目录 | `scope=workspace` 的根 |
-| `workRoot` | 空 | `scope=work` 的根；使用前必须配置 |
-| `personalRoot` | 空 | `scope=personal` 的根；使用前必须配置 |
-| `allRoots` | `C:\` + 存在时的 `D:\` | Anytxt `scope=all` 的根，分号分隔；Everything 的 `all` 搜它索引的所有卷 |
-| `maxResults` | `20` | 默认结果上限；硬上限 100 |
+| `files.backend` | `everything` | `auto` 使用的文件名后端 |
+| `files.everything.esPath` | 自动探测 | `es.exe` 绝对路径。顺序：配置值 → `ES_PATH` → 常见安装目录 → `where.exe` |
+| `files.everything.esEncoding` | `gbk` | 解码 `es.exe` 输出的代码页；接受任意 `TextDecoder` 标签，页面上是 `gbk` / `utf-8` 二选一 |
+| `content.backend` | `anytxt` | `auto` 使用的内容后端 |
+| `content.anytxt.url` | `http://127.0.0.1:9920` | 本机 Anytxt JSON-RPC 地址（只接受 `127.0.0.1`、`localhost`、`[::1]`）；默认还会尝试 `:9921` |
+| `scopes.workspaceRoot` | 会话默认目录 | `scope=workspace` 的根 |
+| `scopes.workRoot` | 空 | `scope=work` 的根；使用前必须配置 |
+| `scopes.personalRoot` | 空 | `scope=personal` 的根；使用前必须配置 |
+| `scopes.allRoots` | `C:\` + 存在时的 `D:\` | Anytxt `scope=all` 的根，分号分隔；Everything 的 `all` 搜它索引的所有卷 |
+| `limits.maxResults` | `20` | 默认结果上限；硬上限 100 |
+| `limits.readMaxChars` | `8000` | `local_search_read` 默认窗口；硬上限 20,000 字符 |
 | `timeoutMs` | `30000` | 单次调用超时预算；仅 profile YAML |
-| `readMaxChars` | `8000` | `local_search_read` 默认窗口；硬上限 20,000 字符 |
-| `esEncoding` | `gbk` | `es.exe` 输出的代码页；页面上是 `gbk` / `utf-8` 的二选一控件 |
 
 示例：
 
@@ -91,23 +101,27 @@ dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
 - id: fishdivinity-local-search
   name: '@fishdivinity/dsh-local-search'
   config:
-    workRoot: 'D:\Projects'
-    personalRoot: 'D:\Documents'
-    allRoots: 'C:\;D:\'
+    scopes:
+      workRoot: 'D:\Projects'
+      personalRoot: 'D:\Documents'
+    limits:
+      maxResults: 50
 ```
+
+0.2 的 profile 不用手改：启动时那九个扁平键（`esPath`、`esEncoding`、`anytxtUrl`、`workspaceRoot`、`workRoot`、`personalRoot`、`allRoots`、`maxResults`、`readMaxChars`）会搬进上面的嵌套结构并清掉旧键。settings 写不进去时（profile 被 home patch 覆盖）旧键留在原地，读取仍然认它。
 
 ## Scope
 
 - `workspace`（默认）：会话工作目录。
-- `work`：`workRoot`。
-- `personal`：`personalRoot`。
-- `all`：Anytxt 用 `allRoots`；Everything 搜所有已索引卷。
+- `work`：`scopes.workRoot`。
+- `personal`：`scopes.personalRoot`。
+- `all`：Anytxt 用 `scopes.allRoots`；Everything 搜所有已索引卷。
 
 只有用户明确说“全盘/跨盘”时才用 `all`；`path` 参数可覆盖 `scope`。
 
 ## 引擎选择
 
-`engine` 默认 `auto`：
+`engine` 默认 `auto`，跟随该能力配置的后端：`local_search_files` 用 `files.backend`，`local_search_content` / `fragments` / `read` 用 `content.backend`。
 
 - `local_search_files`：`auto` / `everything`。
 - `local_search_content` / `fragments` / `read`：`auto` / `anytxt`。
@@ -119,7 +133,7 @@ dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
 
 | code | 含义 |
 |---|---|
-| `EVERYTHING_ES_NOT_FOUND` | 找不到 `es.exe`；安装或配置 `esPath` |
+| `EVERYTHING_ES_NOT_FOUND` | 找不到 `es.exe`；安装或配置 `files.everything.esPath` |
 | `EVERYTHING_DOWN` | Everything 没运行/不可达 |
 | `EVERYTHING_TIMEOUT` / `EVERYTHING_TOO_LARGE` | 查询太宽或太慢；缩小范围 |
 | `ANYTXT_DOWN` | Anytxt GUI 没运行或 JSON-RPC 不可达 |
@@ -156,7 +170,7 @@ npm run check
 npm run pack:check
 ```
 
-引擎与配置模块（`lib/everything.js`、`lib/anytxt.js`、`lib/roots.js`、`lib/format.js`、`lib/config.js`）不依赖 DSH runtime，可在普通 Node 下测试。`lib/client.js` 是随包发布的浏览器半：直接按客户端模块系统的 lazy-CJS factory 格式手写成最终产物，没有构建步骤。架构与扩展见 [`docs/architecture.md`](docs/architecture.md)、[`docs/extending-engines.md`](docs/extending-engines.md)。
+引擎与配置模块（`lib/everything.js`、`lib/anytxt.js`、`lib/roots.js`、`lib/format.js`、`lib/config.js`）不依赖 DSH runtime，可在普通 Node 下测试。`lib/client.js` 是随包发布的浏览器半：直接按客户端模块系统的 lazy-CJS factory 格式手写成最终产物，没有构建步骤。架构与扩展见 [`docs/architecture.md`](docs/architecture.md)、[`docs/extending-engines.md`](docs/extending-engines.md)；改配置形状前先读 [`docs/config-migration.md`](docs/config-migration.md)。
 
 ## Changelog
 
