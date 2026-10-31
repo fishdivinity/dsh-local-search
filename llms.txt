@@ -1,0 +1,45 @@
+# dsh-local-search
+
+> Read-only local file and document search for DeepSeek Harness on Windows: file and folder names through Everything (`es.exe`), the text inside PDF / DOCX / XLSX / PPTX / EPUB / RTF / TXT / MD through Anytxt, exposed as five tools plus a configuration page.
+
+This file is the compact, machine-readable summary for agents and crawlers. The contract is in `README.md`; this one repeats only what a tool router needs.
+
+## Use it when
+
+- The search is a step inside the task, not the task: the answer needs a document the session cannot point at, and the reply has to cite the path and quote it found.
+- The session knows the answer's shape but not the keyword — a supplier name, a paraphrase, Chinese and English spellings, a product code — so it must try several queries and read what comes back.
+- The answer spans several files and needs comparison, or the work is batch ("the counterparty in each of these 30 contracts").
+- The text is inside PDF, DOCX, XLSX, PPTX or EPUB, which `grep` cannot read.
+
+Finding one file by name is a legitimate request on its own: `local_search_files` answers it directly. Inside the session directory, `grep`/`glob` stay cheaper.
+
+## Tools
+
+| Tool | Use for | Notes |
+|---|---|---|
+| `local_search_files` | File and folder names, paths, cross-drive discovery | Everything via `es.exe`; covers what Everything indexed |
+| `local_search_content` | Text inside PDF, DOCX, XLSX, PPTX, EPUB, RTF, TXT, MD | Anytxt; each hit carries a `ref` such as `anytxt:123` |
+| `local_search_fragments` | Snippets around one match | Pass a content hit's `ref` back unchanged |
+| `local_search_read` | Extracted plain text of one file | Capped at `limits.readMaxChars`, hard 20,000 characters |
+| `local_search_status` | Per-engine reachability | Ask before reporting "no results" |
+
+## Arguments and limits
+
+- `scope`: `workspace` (default, the session directory), `work`, `personal`, `all`. `path` overrides `scope`; `all` only for an explicit global search.
+- `engine`: `auto` by default and follows the configured backend; passing a name asserts the engine rather than selecting one.
+- Result caps: `limits.maxResults` (default 20, hard 100) and `limits.readMaxChars` (default 8000, hard 20,000).
+- Failed calls are typed with stable codes, for example `EVERYTHING_ES_NOT_FOUND`, `EVERYTHING_DOWN`, `ANYTXT_DOWN`, `ROOT_NOT_FOUND`, `SCOPE_NOT_CONFIGURED`, `INVALID_ARGUMENT`. Quote the code.
+
+## Rules that avoid wrong answers
+
+- `*_DOWN` means the engine is not running. Fall back to `grep`/`glob` and say you fell back; a down engine is not "no such file".
+- Read-only: no write, delete, index-sync, OCR, export or settings operation exists on this surface.
+- Windows only, and Everything / Anytxt are installed and licensed separately; the plugin never bundles, downloads or starts them.
+
+## Links
+
+- Source and README: https://github.com/fishdivinity/dsh-local-search
+- Chinese README: https://github.com/fishdivinity/dsh-local-search/blob/main/README-zh.md
+- Package: https://www.npmjs.com/package/@fishdivinity/dsh-local-search
+- Changelog: https://github.com/fishdivinity/dsh-local-search/blob/main/CHANGELOG.en.md
+- Architecture: https://github.com/fishdivinity/dsh-local-search/blob/main/docs/architecture.md

@@ -4,7 +4,7 @@
 
 # Local Search for DeepSeek Harness
 
-**Read-only Everything filename search and Anytxt document-content search, behind one capability-based tool surface.**
+**File names and document text from the whole machine, behind five read-only tools — so the model searches your disk instead of guessing a path.**
 
 [![npm version](https://img.shields.io/npm/v/@fishdivinity/dsh-local-search)](https://www.npmjs.com/package/@fishdivinity/dsh-local-search)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -17,8 +17,27 @@
 
 </div>
 
+## Why this exists
+
+A session sees one folder. `grep` and `glob` are fast inside it and blind outside it, so when the work needs a file that lives anywhere else, the model either guesses a path or stops and asks you for one — and the lookup goes back to you, in another window, with the conversation waiting.
+
+Searching is not the expensive part. Picking the right hit, opening the document, reading the part that matters, putting two of them side by side, and being able to say where the answer came from — that is. It is also exactly what a model is good at, once it can reach an index.
+
+This plugin gives it both: `es.exe` for file and folder **names** wherever Everything has indexed them, Anytxt for the **text inside** PDF, DOCX, XLSX, PPTX, EPUB, RTF, TXT and MD files. The whole surface is read-only — nothing writes, deletes, re-indexes, OCRs or starts an engine.
+
+## When to use it
+
+- **The search is a step, not the goal.** You asked for something else — a summary, a comparison, a fix — and the answer needs a document you cannot point at. Handing that lookup back to yourself costs a window switch and a paste.
+- **You know the answer, not the keyword.** "The price clause we agreed with that supplier", "the note about this error". The model can try five phrasings in two languages, read the hits, and come back with the quote and the path.
+- **The answer spans files.** "Compare the payment terms in these two contracts", "what did the last three meeting notes decide about the schedule". A search field returns a hit list; the reading and comparing is the part you wanted delegated.
+- **The work is batch.** "List the counterparty in each of these 30 contracts" — no search field does this. Search once, read every hit, write the table.
+- **The file is not text.** `grep` cannot open a PDF, a `.docx`, or a spreadsheet. Either the text comes through Anytxt, or you paste it in by hand.
+- **The answer has to cite a source.** A path plus a snippet can be checked; a plausible paragraph cannot.
+
 ## Contents
 
+- [Why this exists](#why-this-exists)
+- [When to use it](#when-to-use-it)
 - [Tools](#tools)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -29,6 +48,7 @@
 - [Security and limits](#security-and-limits)
 - [Known limitations](#known-limitations)
 - [Related plugins](#related-plugins)
+- [For AI agents](#for-ai-agents)
 - [Development](#development)
 - [License](#license)
 
@@ -169,6 +189,27 @@ If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell b
 - [`dsh-tool-everything`](https://dshbase.com/zh/plugins/dsh-tool-everything/) covers Everything filename search through the SDK.
 - [`dsh-workspace-search`](https://github.com/tsonglew/dsh-workspace-search) covers workspace file names/contents in the sidebar.
 - This plugin's differentiator is Anytxt document content plus one routing surface for names and contents.
+
+## For AI agents
+
+A session that can only see one folder and is asked about anything else should search instead of guessing. Map the question to a tool:
+
+| Question | Tool | What comes back |
+|---|---|---|
+| Where is this file? | `local_search_files` | Paths and names, anywhere Everything indexed |
+| What does this document say? | `local_search_content` | Matching lines from the text Anytxt extracted, with a `ref` per hit |
+| Which part of it? | `local_search_fragments` | Snippets around one match — pass that hit's `ref` unchanged |
+| Give me the text | `local_search_read` | Extracted plain text of one file, capped |
+| Is the engine even there? | `local_search_status` | Per-engine reachability, before you report "no results" |
+
+- `scope` defaults to `workspace` (the session directory); `work` and `personal` are configured roots; `all` crosses drives and is only for an explicit global search. `path` overrides `scope`.
+- Pass a content hit's `ref` back unchanged (`anytxt:123`); `engine` is an assertion to check against, not a selector.
+- `EVERYTHING_DOWN` / `ANYTXT_DOWN` mean the engine is not running — fall back to `grep`/`glob` and say you fell back. A down engine is not "no such file".
+- Results are capped (`limits.maxResults`, hard 100; `local_search_read` 20,000 characters). Narrow the query instead of paging.
+- Every failure carries a stable code from the table above; quote the code, not the prose.
+- Windows only, and the engines are installed separately: file-name results cover what Everything indexed, content results cover what Anytxt indexed.
+
+A shorter machine-readable copy of this section is in [`llms.txt`](llms.txt). Terms this package answers to: local search, Everything, `es.exe`, Anytxt, full-text search, PDF / Word / Excel / PowerPoint / EPUB text, cross-drive search, file names outside the workspace.
 
 ## Development
 
