@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.3.0 — 2026-10-29
+本文件中文；英文全量在 [CHANGELOG.en.md](CHANGELOG.en.md)。0.2.1 及更早的条目保留发布时的英文原文，0.3.0 起两边各写一份。
+
+## 0.3.0 — 2026-10-31
 
 **配置键迁移**：`esPath`、`esEncoding`、`anytxtUrl`、`workspaceRoot`、`workRoot`、`personalRoot`、`allRoots`、`maxResults`、`readMaxChars` 从顶层搬进 `files.*` / `content.*` / `scopes.*` / `limits.*`。启动时把旧键读进新结构并清掉旧键；写入被 home patch 覆盖时旧键保留，读侧继续认它。0.2 的 profile 不需要手改。
 

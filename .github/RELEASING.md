@@ -58,11 +58,19 @@ Start from [`docs/releases/TEMPLATE.md`](../docs/releases/TEMPLATE.md) and follo
 
 - Chinese first, English after; both halves say the same thing;
 - five sections per half: 这版做了什么 / 怎么做到的 / 升级 / 兼容 / 完整变更 (`What changed` / `How` / `Upgrade` / `Compatibility` / `Full changelog`);
-- a summary, not an itemised list: `CHANGELOG.md` is the full record, so the two must not restate each other.
+- a summary, not an itemised list: the changelog is the full record, so the two must not restate each other;
+- each half links its own changelog: `../../CHANGELOG.md` after the Chinese one, `../../CHANGELOG.en.md` after the English one. The workflow expands them to `blob/<tag>/…`, and it refuses a body that still points at `main`.
+
+## Changelogs
+
+`CHANGELOG.md` is Chinese, `CHANGELOG.en.md` is English; both list the same versions. Entries up to 0.2.1 stay as they shipped (English); from 0.3.0 on, write the entry in both files in the same commit.
+
+Neither file may grow without bound. Cut when a file passes ~200 lines **or** the tree crosses five minors (0.1.0…0.4.0 is five): move the two oldest versions out of both files, in the same commit, into `docs/CHANGELOG-archive.md` and `docs/CHANGELOG-archive.en.md`, and leave one line at the bottom of each root file pointing at its archive. Cut only on `main`: every tag keeps its own snapshot, which is why published release links stay valid.
 
 ## Later releases (agent can do this)
 
-1. Bump `version` in `package.json`, add a `CHANGELOG.md` entry, and add `docs/releases/vX.Y.Z.md`.
+1. Bump `version` in `package.json`, add the entry to `CHANGELOG.md` **and** `CHANGELOG.en.md`, and add `docs/releases/vX.Y.Z.md`.
+   The entry's heading date is the **release day**, not the day the work started: set it in the release commit, after the last code change.
 2. Run `npm test`, `npm run check`, `npm run privacy`, and `npm run pack:check`. CI runs the same four.
 3. Commit and push `main`.
 4. Tag and push:

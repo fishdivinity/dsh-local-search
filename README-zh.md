@@ -174,7 +174,7 @@ npm run pack:check
 
 ## Changelog
 
-见 [CHANGELOG.md](CHANGELOG.md)。它保留在仓库里；npm tarball 只带运行时文件、README、LICENSE、locale 和 icon。
+见 [CHANGELOG.md](CHANGELOG.md)（中文）或 [CHANGELOG.en.md](CHANGELOG.en.md)（英文）。它们保留在仓库里；npm tarball 只带运行时文件、README、LICENSE、locale 和 icon。
 
 ## 许可证
 

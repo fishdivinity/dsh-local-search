@@ -184,7 +184,7 @@ The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). It stays in the repository; the npm tarball ships only the runtime files, README, LICENSE, locale, and icon.
+See [CHANGELOG.md](CHANGELOG.md) (Chinese) or [CHANGELOG.en.md](CHANGELOG.en.md) (English). They stay in the repository; the npm tarball ships only the runtime files, README, LICENSE, locale, and icon.
 
 ## License
 
