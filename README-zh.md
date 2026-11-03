@@ -23,7 +23,7 @@
 
 「搜一下」其实不是贵的部分。挑哪条命中、打开文档、读该读的那段、把两份放在一起比、最后说清结论出自哪里——这才是。而这些正好是模型擅长的，只要它够得着索引。
 
-这个插件把两个索引都接进来：`es.exe` 查 Everything 索引到的**文件名**，Anytxt 读 PDF、DOCX、XLSX、PPTX、EPUB、RTF、TXT、MD 里的**正文**。整套能力只读——不写、不删、不重建索引、不做 OCR、不启动引擎。
+这个插件把两个索引都接进来：`es.exe` 查 Everything 索引到的**文件名**，Anytxt 读 PDF、DOCX、XLSX、PPTX、EPUB、RTF、TXT、MD 里的**正文**。整套能力只读——不写、不删、不重建索引、不做 OCR、不启动引擎。查询由这两个引擎已经建好的索引回答：毫秒级，不重新扫盘。
 
 ## 什么时候用它
 
@@ -72,15 +72,14 @@
 
 ## 安装
 
-```powershell
-dsh plugin --profile desktop add @fishdivinity/dsh-local-search
-```
-
-npm 首发前可从 GitHub 安装：
+命令只往一个 profile 里装，而且必须是会话实际启动的那个：桌面 App 用 `desktop`，`dsh web` 用 `web`。
 
 ```powershell
-dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
+dsh plugin --profile desktop add @fishdivinity/dsh-local-search   # 桌面 App
+dsh plugin --profile web add @fishdivinity/dsh-local-search       # dsh web
 ```
+
+`web` 是随包模板，首次使用自动初始化；`desktop` 要先用 App 打开过一次，且只有桌面 App 自带的那条 `dsh` 能管它。要从源码装而不是 npm 包，把结尾的包名换成 `github:fishdivinity/dsh-local-search`。
 
 重启 profile 或新开会话，工具列表出现 5 个 `local_search_*` 工具。
 

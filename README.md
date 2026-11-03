@@ -23,7 +23,7 @@ A session sees one folder. `grep` and `glob` are fast inside it and blind outsid
 
 Searching is not the expensive part. Picking the right hit, opening the document, reading the part that matters, putting two of them side by side, and being able to say where the answer came from — that is. It is also exactly what a model is good at, once it can reach an index.
 
-This plugin gives it both: `es.exe` for file and folder **names** wherever Everything has indexed them, Anytxt for the **text inside** PDF, DOCX, XLSX, PPTX, EPUB, RTF, TXT and MD files. The whole surface is read-only — nothing writes, deletes, re-indexes, OCRs or starts an engine.
+This plugin gives it both: `es.exe` for file and folder **names** wherever Everything has indexed them, Anytxt for the **text inside** PDF, DOCX, XLSX, PPTX, EPUB, RTF, TXT and MD files. The whole surface is read-only — nothing writes, deletes, re-indexes, OCRs or starts an engine. A lookup is answered from the index those engines already built: milliseconds, not a rescan of the drive.
 
 ## When to use it
 
@@ -73,15 +73,14 @@ This plugin does **not** bundle Everything, `es.exe`, or Anytxt. Install and lic
 
 ## Install
 
-```powershell
-dsh plugin --profile desktop add @fishdivinity/dsh-local-search
-```
-
-From GitHub before the first npm release:
+The command writes into one profile, and it has to be the profile the session boots from — the Desktop app owns `desktop`, `dsh web` owns `web`:
 
 ```powershell
-dsh plugin --profile desktop add github:fishdivinity/dsh-local-search
+dsh plugin --profile desktop add @fishdivinity/dsh-local-search   # Desktop app
+dsh plugin --profile web add @fishdivinity/dsh-local-search       # dsh web
 ```
+
+`web` is a shipped template that initializes on first use; `desktop` must have been opened once, and only the `dsh` bundled with the Desktop app can manage it. To install the source instead of the npm tarball, swap the spec for `github:fishdivinity/dsh-local-search`.
 
 Restart the profile or open a new session. The five `local_search_*` tools appear in the model toolset.
 
