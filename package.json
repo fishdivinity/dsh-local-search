@@ -1,6 +1,6 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Local file and document search for DeepSeek Harness: Everything filenames plus Anytxt document contents, read-only, with a configuration page on the Plugins page.",
   "type": "module",
   "main": "lib/index.js",
@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/schema.js && node --check lib/describe.js && node --check lib/bootstrap.js && node --check lib/limits.js && node --check lib/probe.js && node --check lib/route.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs && node --check scripts/privacy-scan.mjs",
+    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/labels.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/platform.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/fields.js && node --check lib/schema.js && node --check lib/describe.js && node --check lib/bootstrap.js && node --check lib/diagnose.js && node --check lib/limits.js && node --check lib/probe.js && node --check lib/status.js && node --check lib/route.js && node --check lib/locale-packs.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs && node --check scripts/privacy-scan.mjs",
     "privacy": "node scripts/privacy-scan.mjs",
     "pack:check": "npm pack --dry-run"
   },

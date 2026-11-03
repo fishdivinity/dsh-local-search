@@ -44,7 +44,7 @@ This plugin gives it both: `es.exe` for file and folder **names** wherever Every
 - [Configuration](#configuration)
 - [Scopes](#scopes)
 - [Engine selection](#engine-selection)
-- [Errors](#errors)
+- [Errors and diagnostics](#errors-and-diagnostics)
 - [Security and limits](#security-and-limits)
 - [Known limitations](#known-limitations)
 - [Related plugins](#related-plugins)
@@ -87,15 +87,19 @@ Restart the profile or open a new session. The five `local_search_*` tools appea
 
 ## Configuration
 
-Sidebar **Plugins** → the **Local Search** card in the **Official plugins** group → the plugin's own page. That is the same card shape the GitHub plugin contributes. Saves apply to the next tool call; leaving the page drops unsaved edits. **Reset**, under the description, first shows what it will clear and only writes once you confirm: the engine and limit settings go, a fresh probe refills them, and the search scopes are left alone because they are paths you typed.
+Sidebar **Plugins** → the **Local Search** card in the **Official plugins** group → the plugin's own page. That is the same card shape the GitHub plugin contributes. Saves apply to the next tool call; leaving the page drops unsaved edits. **Reset**, under the description, first shows what it will clear and only writes once you confirm: the engine and limit settings go, a fresh probe refills them, and the search scopes plus the startup-check switch are left alone.
 
-The page is organised by capability: **File names** and **File contents** each open with a backend picker and show that backend's fields once it is selected; **Search scopes** and **Limits** are the same whichever backend runs, so they close the page. The Host's `GET /dsh-local-search/api/describe` supplies the sections, the registered backends, the field types and the hard caps, and the page only renders them, so a new backend does not change the page logic.
+The page is organised by capability: **File names** and **File contents** each open with a backend picker and show that backend's fields once it is selected; **Search scopes**, **Limits** and **Startup** are the same whichever backend runs, so they close the page. The Host's `GET /dsh-local-search/api/describe` supplies the sections, the registered backends, the field types and the hard caps, and the page only renders them, so a new backend does not change the page logic.
 
 **Test connection** sits under the Anytxt endpoint field. It probes the endpoint as typed — nothing has to be saved first — together with Everything, and puts the result and its fix in a dialog that can probe again. The `es.exe` path in the field is checked too, so a typo there says the file is missing instead of reporting the saved binary as OK. A failing engine gets a link to its official download page; this plugin never bundles, downloads, or installs either product.
 
 **A save checks before it writes.** When the endpoint or the `es.exe` path is part of the edit, the page probes them first: whatever the check refuses is not written, and a dialog asks whether to **Save anyway** — a deliberate exception rather than the default. A hard rejection (no file at that path, no such directory, a rejected address) gets no such way out. The Host only checks that the path exists; it never starts a file named by a request. Path fields and the endpoint are also checked when focus leaves them: a missing path, a directory where a file belongs, or a non-local address is flagged under the input and clears as soon as the value changes.
 
-Path fields are rewritten to one standard spelling on save: `d:/alpha` is stored as `D:\alpha` (upper-case drive letter, backslashes, no trailing separator), and `allRoots` is rewritten entry by entry. When the path exists, the on-disk spelling wins (`d:/alpha` → `D:\Alpha`). Spaces and non-ASCII names are left alone — `D:\Alpha\我的项目\drawio a` is fine as typed, because the Host passes values to `es.exe` and the file APIs without going through a shell.
+Path fields are rewritten to one standard spelling on save: `d:/alpha` is stored as `D:\alpha` (upper-case drive letter, backslashes, no trailing separator), and `allRoots` is rewritten entry by entry. When the path exists, the on-disk spelling wins (`d:/alpha` → `D:\Alpha`). This rewriting only happens on Windows: the page asks the Host for its platform and leaves POSIX-style values alone. Spaces and non-ASCII names are left alone — `D:\Alpha\我的项目\drawio a` is fine as typed, because the Host passes values to `es.exe` and the file APIs without going through a shell. A path may also start with `~/`; it is expanded where it is used, and a save writes back the resolved absolute path.
+
+**Copied diagnostics.** The card has a **Copy diagnostics** button under its description: it opens a dialog with a plain-text snapshot of this machine — plugin and DSH versions, `profile`, `shell`, whether the page runs against a Host on another machine, OS and node, each engine's state with the code that explains it and, when it failed, the address it tried plus the transport error, the configured `es.exe` path, endpoint, encoding, timeout, limits and backends, the search roots with the default scope, the startup-write outcome (including an error), and the probe time. The text carries a heading, a one-line legend for its status tags, and a link to the code table, so a person or another assistant can act on it without the source. Paste it into an issue; the home directory and `DSH_HOME` are already reduced to `~`. The same text is at `GET /dsh-local-search/api/diagnose`.
+
+**Startup check.** `checkEnginesOnStart` is on by default: every start probes both engines once and, if one fails, leaves a card in the bottom-right corner with one line per engine and what to fix. The card does not remove itself — closing it hides it for this page only, and the switch is how you stop both the probe and the card. **Test connection** and the first-run pass work either way.
 
 The first run fills what it can and then stops: while `files.everything.esPath` or `content.anytxt.url` is still unset, the plugin probes once, writes what answered, and records that pass in a hidden `autoConfigured` key. After that a field you clear stays clear instead of being filled again.
 
@@ -108,12 +112,14 @@ Every key is optional, and the row config replaces the whole config object rathe
 | `files.everything.esEncoding` | `gbk` | Code page used to decode `es.exe` output. Any `TextDecoder` label is accepted; the page offers `gbk` and `utf-8`. |
 | `content.backend` | `anytxt` | Content backend `auto` uses. |
 | `content.anytxt.url` | `http://127.0.0.1:9920` | Anytxt JSON-RPC endpoint on this machine (`127.0.0.1`, `localhost` or `[::1]` only). The default also tries `:9921`. |
-| `scopes.workspaceRoot` | session default directory | Root for `scope=workspace`. |
-| `scopes.workRoot` | empty | Root for `scope=work`; required before using that scope. |
-| `scopes.personalRoot` | empty | Root for `scope=personal`; required before using that scope. |
-| `scopes.allRoots` | `C:\` plus `D:\` when present | Semicolon-separated roots for Anytxt `scope=all`. Everything `scope=all` searches all volumes it indexes. |
-| `limits.maxResults` | `20` | Default result cap; hard cap 100. |
+| `scopes.workspaceRoot` | session default directory | Directory for `scope=workspace`. |
+| `scopes.workRoot` | empty | Directory for `scope=work`; required before using that scope. |
+| `scopes.personalRoot` | empty | Personal directory for `scope=personal`; required before using that scope. |
+| `scopes.allRoots` | empty (automatic) | Semicolon-separated roots for Anytxt `scope=all`; empty uses the platform default roots (drive roots on Windows, mounted volumes on macOS, `/home` on Linux). Everything `scope=all` searches all volumes it indexes. |
+| `scopes.defaultScope` | `all` | Scope used when a tool call omits `scope`: `all` / `workspace` / `work` / `personal`. |
+| `limits.maxResults` | `20` | Results per call when the tool omits `limit`; hard cap 100, not configurable. |
 | `limits.readMaxChars` | `8000` | Default `local_search_read` window; hard cap 20,000 characters. |
+| `checkEnginesOnStart` | `true` | Probe both engines once per start and show the failure card. |
 | `timeoutMs` | `30000` | Per-call timeout budget; profile YAML only. |
 
 Example row override:
@@ -123,22 +129,22 @@ Example row override:
   name: '@fishdivinity/dsh-local-search'
   config:
     scopes:
-      workRoot: 'D:\Projects'
-      personalRoot: 'D:\Documents'
+      workRoot: '~/Projects'
+      personalRoot: '~/Documents'
     limits:
       maxResults: 50
 ```
 
-A 0.2 profile needs no hand edit: on startup its nine flat keys (`esPath`, `esEncoding`, `anytxtUrl`, `workspaceRoot`, `workRoot`, `personalRoot`, `allRoots`, `maxResults`, `readMaxChars`) move into the structure above and are removed. When the settings layer refuses that write — a home patch overrides the profile — the old keys stay and are still read.
+A 0.1 or 0.2 profile needs no hand edit: on startup its nine flat keys (`esPath`, `esEncoding`, `anytxtUrl`, `workspaceRoot`, `workRoot`, `personalRoot`, `allRoots`, `maxResults`, `readMaxChars`) move into the structure above and are removed. When the settings layer refuses that write — a home patch overrides the profile — the old keys stay and are still read.
 
 ## Scopes
 
-- `workspace` (default): the session's working directory.
-- `work`: `scopes.workRoot`.
-- `personal`: `scopes.personalRoot`.
-- `all`: `scopes.allRoots` for Anytxt; all indexed volumes for Everything.
+- `all` (default): the whole computer; `scopes.allRoots` for Anytxt (the platform default roots when empty — drive roots on Windows, mounted volumes on macOS, `/home` on Linux), all indexed volumes for Everything.
+- `workspace`: the session's working directory.
+- `work`: `scopes.workRoot` (work directory).
+- `personal`: `scopes.personalRoot` (personal directory).
 
-Use `all` only when the user explicitly asks for a cross-drive/global search. The `path` argument overrides `scope`.
+`scopes.defaultScope` sets which one is used when a tool call omits `scope`; it defaults to `all`. Pass `scope` or `path` only when the user explicitly limits the search.
 
 ## Engine selection
 
@@ -150,21 +156,13 @@ Use `all` only when the user explicitly asks for a cross-drive/global search. Th
 
 The tool names stay stable if more engines are added; `engine` values are additive. Content items carry both `engine` and a self-describing `ref` such as `anytxt:123`; pass the ref unchanged to `local_search_fragments`/`local_search_read`, and pass `engine` only as an assertion.
 
-## Errors
+## Errors and diagnostics
 
-Failures are typed `HarnessError`s with stable codes:
+Every failure is a typed `HarnessError` with a stable code. The code table — what raises each one, what you see, and what to do — lives in [`docs/troubleshooting.md`](docs/troubleshooting.md); it is the only place that explains codes.
 
-| Code | Meaning |
-|---|---|
-| `EVERYTHING_ES_NOT_FOUND` | `es.exe` is missing; install it or set `files.everything.esPath`. |
-| `EVERYTHING_DOWN` | Everything is not running / cannot be reached. |
-| `EVERYTHING_TIMEOUT`, `EVERYTHING_TOO_LARGE` | Query too broad or slow; narrow it. |
-| `ANYTXT_DOWN` | Anytxt GUI is not running or the JSON-RPC endpoint is unreachable. |
-| `ANYTXT_TIMEOUT`, `ANYTXT_RPC`, `ANYTXT_HTTP` | Anytxt-side query/transport failure. |
-| `ROOT_NOT_FOUND`, `SCOPE_NOT_CONFIGURED`, `INVALID_SCOPE` | Root/scope configuration problem. |
-| `INVALID_ARGUMENT` | Empty query, bad limit, etc. |
+A tool call returns the code and a one-line message and nothing else, deliberately: a model that starts installing engines or editing configuration turns one failed search into an environment repair, while the useful move is to fall back to `grep`/`glob` and say it did.
 
-If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell back.
+If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell back. The human picture of this machine — versions, `profile`, `shell`, platform, engine states, roots, probe time — is **Copy diagnostics** on the plugin card or `GET /dsh-local-search/api/diagnose`.
 
 ## Security and limits
 
@@ -173,11 +171,12 @@ If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell b
 - Anytxt is only called through `Search`, `GetResult`, `GetFragmentAll`, and `GetRawTextByFID`.
 - No network access except the configured local Anytxt URL.
 - Results are capped; `local_search_read` caps the returned text.
-- The plugin runs with the user's privileges and can read files the user can read. Prefer `scope=workspace` unless a global search is requested.
+- The plugin runs with the user's privileges and can read files the user can read. Search tools default to `all` (every available root); prefer `scope=workspace`/`work`/`personal` or `path` when the search should stay in one tree.
 
 ## Known limitations
 
-- Windows only.
+- The engines are Windows-only today. The scope/path layer is already platform-aware (Windows drive roots, macOS `/Users` + `/Volumes`, Linux `/home`), so labels and roots do not assume drive letters; native backends for macOS/Linux are something we may add later. On those systems the tools still answer but report both engines as unavailable (`missing-tool` / `down`), and the card plus diagnostics name the platform.
+- The default scope is `all`: content search queries every default root (up to two RPCs per root). If the configured `allRoots` are all missing (a drive unplugged), the call falls back to the workspace and the result says so; a partially missing root is skipped and named in the result.
 - Everything 1.4 indexes metadata, not file contents; use Anytxt for contents.
 - Anytxt's JSON-RPC API is local and unofficial; GUI versions can change behavior. The plugin reports unreachable/wrong-shape responses instead of guessing.
 - Anytxt's index may be stale. Verify important hits with `read`/the original file.
@@ -202,11 +201,12 @@ A session that can only see one folder and is asked about anything else should s
 | Give me the text | `local_search_read` | Extracted plain text of one file, capped |
 | Is the engine even there? | `local_search_status` | Per-engine reachability, before you report "no results" |
 
-- `scope` defaults to `workspace` (the session directory); `work` and `personal` are configured roots; `all` crosses drives and is only for an explicit global search. `path` overrides `scope`.
+- `scope` defaults to `scopes.defaultScope` (`all` out of the box); `workspace`, `work` and `personal` are explicit narrowings, and `path` overrides `scope`.
 - Pass a content hit's `ref` back unchanged (`anytxt:123`); `engine` is an assertion to check against, not a selector.
 - `EVERYTHING_DOWN` / `ANYTXT_DOWN` mean the engine is not running — fall back to `grep`/`glob` and say you fell back. A down engine is not "no such file".
-- Results are capped (`limits.maxResults`, hard 100; `local_search_read` 20,000 characters). Narrow the query instead of paging.
-- Every failure carries a stable code from the table above; quote the code, not the prose.
+- `local_search_status` says whether an engine works, not how to fix it. The fix belongs to the user, in the plugin card; installing or starting an engine is not your call.
+- Results are capped (`limits.maxResults` is the default per call, hard 100; `local_search_read` 20,000 characters). Narrow the query instead of paging.
+- Every failure carries a stable code from [`docs/troubleshooting.md`](docs/troubleshooting.md); quote the code, not the prose.
 - Windows only, and the engines are installed separately: file-name results cover what Everything indexed, content results cover what Anytxt indexed.
 
 A shorter machine-readable copy of this section is in [`llms.txt`](llms.txt). Terms this package answers to: local search, Everything, `es.exe`, Anytxt, full-text search, PDF / Word / Excel / PowerPoint / EPUB text, cross-drive search, file names outside the workspace.
@@ -221,7 +221,11 @@ npm run check
 npm run pack:check
 ```
 
-The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/format.js`, `lib/config.js`) are independent of the DSH runtime so their tests run under plain Node. `lib/client.js` ships as the browser half: it is written directly in the client module system's lazy-CJS factory format, so there is no build step. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), [`docs/config-migration.md`](docs/config-migration.md) for the rules a config-shape change has to follow, and [`.github/RELEASING.md`](.github/RELEASING.md).
+The engine and config modules (`lib/everything.js`, `lib/anytxt.js`, `lib/roots.js`, `lib/platform.js`, `lib/format.js`, `lib/config.js`) are independent of the DSH runtime so their tests run under plain Node. `lib/client.js` ships as the browser half: it is written directly in the client module system's lazy-CJS factory format, so there is no build step. See [`docs/architecture.md`](docs/architecture.md), [`docs/extending-engines.md`](docs/extending-engines.md), [`docs/config-migration.md`](docs/config-migration.md) for the rules a config-shape change has to follow, and [`.github/RELEASING.md`](.github/RELEASING.md).
+
+Adding a language is two files: `lib/locales/<lang>.json` holding exactly the baseline's key set (values only, `.`-separated keys, `{name}` placeholders kept), and `locale/<lang>.json` for the plugin list's title and description. A pack is registered only for a language the shell already ships — the card never adds one to the picker — and `test/client.test.js` fails when a pack's keys or placeholders drift from the baseline. `zh` and `en` stay in the bundle: `apply` cannot wait on a request, and the first frame must not flash another language.
+
+This release ships initial `de`, `es`, `fr`, `ja`, `pt` (Brazilian Portuguese) and `ru` packs — the six ids DSH 0.2.2 introduces. They were proofread against the English baseline; native review is still welcome and replaces a whole file at a time. Ids must match the shell's list exactly (`pt`, not `pt-BR`), otherwise the pack is ignored and the card falls back to English.
 
 ## Changelog
 

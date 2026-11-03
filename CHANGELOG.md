@@ -2,6 +2,39 @@
 
 本文件中文；英文全量在 [CHANGELOG.en.md](CHANGELOG.en.md)。0.2.1 及更早的条目保留发布时的英文原文，0.3.0 起两边各写一份。
 
+## 0.4.0 — 2026-11-03
+
+**认识环境**：平台识别、四态探测、路径语义。**能排查**：可复制诊断与错误码文档。**少打扰**：启动检查与右下角提示卡。**多语言**：按语言拆文件。
+
+- `platform`: 新增 `lib/platform.js`——`detect()` 给出 `os` / `pathStyle` / `caseInsensitive` / `home` / 默认根（Windows 扫 A:–Z: 的现有盘根），三平台单测；平台默认值只从这一处出，别的模块不再读 `process.platform` 或 `process.env.SystemDrive`。
+- `search`: `~/x` 在使用点展开成家目录（页面保存时写回解析后的绝对路径；手写 profile 里的 `~/x` 仍然有效）；绝对路径按目标平台的写法判，Windows 上也接受 `/Users/x`；`allRoots` 仍是分号分隔。
+- `page`: 路径改写按 describe 给的 `platform` 走——Windows 上 `D:/alpha` 写成 `D:\alpha`，POSIX 写法原样保留；保存、失焦校验、测试连接共用同一套改写，并与 Host 的实现逐例比对。
+- `engines`: 探测收进各后端（`probe()` → `ready` / `missing-tool` / `missing-index` / `down`）；`lib/probe.js` 只汇总归一，不再认识任何引擎；`sc.exe` 的安装判断留在 `everything.js`。
+- `search`: 两条输出面各加一层过滤——`formatStatus` 只出 `ok` / `code` / `message`（加正在用的后端与几组根），模型拿不到四态、修法、插件版本；系统提示补一句「不要安装、启动或改配置这些引擎，说清哪个后端挂了、去插件卡里修」；`test/format.test.js` 钉住 `state` / `detail` / `hint` 不进输出。
+- `config`: 新键 `checkEnginesOnStart`（默认开，配置页用开关渲染）；开着就每次启动探一次，结果只进 `describe.health`（`pending` / `failures` / `checkedAt` / `disabled`），不写配置；`autoconfig.failures` 删掉，首用那一次只负责写值，且不受开关影响。
+- `page`: 右下角提示卡改为自绘（`shell.overlay`）：只在有失败时出现，颜色只走 `--dsw-*` token，一行一个后端挂自己的修法；卡不自动重探、也不自动消失，由用户关闭；关闭只记组件 state，不写 `sessionStorage`，跨会话的「别再提醒」由 `checkEnginesOnStart` 负责。缺 primitives 时关闭按钮退回原生 `button`。
+- `route`: 新增只读 `GET /dsh-local-search/api/diagnose`，回 `{ text }`：插件与 DSH 版本、`profile` / `shell` / `remote`、平台与 node、每个后端的状态与 code、四个 scope、探测时刻；`os.homedir()` 与 `DSH_HOME` 在 Host 侧换成 `~`。每次现算，`no-store`，与其它路由共用同一道跨站门。
+- `page`: 描述下面新增「复制诊断」——弹窗里是可全选的 `textarea` 加复制按钮；剪贴板被拒时退回手动全选，不只弹一句失败；没有 `Modal` 的部署不显示这个按钮。Host 在另一台机器上（页面不是 loopback）时，页面多一行说明「检索的是那台机器的盘」。
+- `docs`: 新增 `docs/troubleshooting.md`（code → 谁产生 → 现象 → 修法，32 个 code）；README 里的错误码表删掉，只留一句回退建议与指向它的链接。
+- `i18n`: 字典改成点号键名（`field.esPath.label`、`section.files`、`dialog.reset.title`），`FIELD_COPY` 并进基线同一棵树；新增 `GET /dsh-local-search/api/locales`（一次回全部语言包，按内容算 ETag / 304）与 `lib/locale-packs.js`；页面只给壳子 `getSnapshot().locales` 里已有的语言注册，不 `addLanguage`；zh / en 仍留在 bundle 里当同步基线。README 写清「加一种语言」两步。
+- `i18n`: 附带 `de` / `es` / `fr` / `ja` / `pt`（巴西葡语）/ `ru` 六门初译，id 对齐 DSH 0.2.2 新增的语言；已按英文基线做过一轮审校，母语复核仍欢迎（整份替换）。没有对应包或 id 不匹配时回退英文，不影响页面。
+- `test`: 新增 `test/platform.test.js`、`test/diagnose.test.js`、`test/locale-packs.test.js`；`test/everything.test.js` / `test/anytxt.test.js` / `test/probe.test.js` / `test/engines.test.js` 改到四态与 `probe`；`test/describe.test.js`、`test/route.test.js`、`test/bootstrap.test.js`、`test/format.test.js`、`test/client.test.js` 跟着新契约更新。
+- `search`: `scope=all` 的根不再写死 `C:\` + `D:\`：Windows 上默认扫本机所有存在的盘符，插新盘下次调用就纳入；`scopes.allRoots` 有值时仍以配置为准。
+- `search`: Anytxt 多根合并改成按各根名次轮转，`limit` 小时后面的根不再被第一个根挤掉；查询与文件名完全一致时置顶。
+- `search`: 空结果不再把本次命中数写成「索引总数」；`query` 说明点明 `OR`/`AND` 是字面量，或、与要写成 `|`/`&`。
+- `search`: 内容结果未到 100 条时只保留标题行的 `N of M`；到 100 条才补 `max 100`，不再在 5 条时就说上限。
+- `search`: 默认检索范围改为 `all`（整台电脑）；新增 `scopes.defaultScope`（`all` / `workspace` / `work` / `personal`），`scope` 只用于收窄。
+- `search`: 默认 `all` 的配置根全部不存在时退回 workspace，结果里带一行说明；配置为空仍按平台默认根。
+- `probe`: 两个后端并行探测，最坏约 5 秒（原来串行、各吃一份 5 秒上限）；状态工具与复制诊断不再等两次超时。
+- `status`: `local_search_status` 的 `all=` 按真实可用的根输出：回退 workspace 时带 `allFallback=workspace`，部分根缺失时带 `allMissing=…`；内容结果里同样写明。
+- `status`: 「跳过/取消不算故障」的判据收进 `lib/status.js`，模型输出、诊断文本、启动提示卡三处共用。
+- `diagnose`: 文本补上默认检索范围、`maxResults` / `readMaxChars`、配置的后端，以及首启的 `deferred` / 错误；`config:` 的键由 `lib/diagnose.js` 的 `CONFIG_FACTS` 单一导出，装配点照它组装。
+- `config`: `limits.maxResults` 明确为「调用不传 `limit` 时的默认条数」，硬上限 100 不随配置变化。
+- `page`: 中文/英文文案把“个人根/工作根/全局检索根”统一为“个人目录/工作目录/整台电脑的目录”，并新增“默认检索范围”选择。
+- `page`: “默认检索范围”独占一行，四个目录字段按 2×2 排列；提示改成“不指定范围时用这个”，不再出现 `scope` 术语。
+- `docs`: 范围示例改用 `~/Projects` / `~/Work`，不再默认 Windows 盘符；`es.exe` 与路径改写仍保留 Windows 示例。
+- `docs`: 面向模型与页面的“盘符 / drive”改成“可检索的根 / root”；Windows 盘符、macOS 挂载卷、Linux `/home` 只出现在平台说明与 `status` 的实际根里。
+
 ## 0.3.1 — 2026-10-31
 
 - `page`: 配置卡片不再因界面模块缺失而整块消失——`require('@deepseek-ai/dsh-client-ui-primitives')` 抛异常会连整个浏览器半边一起带走，现在包在 `try`/`catch` 里：缺模块时退成一行「本部署没有这个界面控件」，并在 console 留一条原因，工具与 profile 里的配置照旧可用。`dsh.client.inject` 也去掉了 primitives——它由宿主的模块表直接给，声明只排激活顺序（宿主没有对应的行就跳过），本来就不是硬依赖。
