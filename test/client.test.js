@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describeConfig } from '../lib/describe.js'
-import { DESCRIBE_ROUTE, DRAFT_PARAM, STATUS_ROUTE } from '../lib/route.js'
+import { DESCRIBE_ROUTE, DIAGNOSE_ROUTE, DRAFT_PARAM, STATUS_ROUTE } from '../lib/route.js'
 import { isLoopbackUrl } from '../lib/config.js'
+import { normalizePath as hostNormalizePath, normalizePaths as hostNormalizePaths } from '../lib/platform.js'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
 const packageUrl = new URL('../package.json', import.meta.url)
@@ -15,7 +16,7 @@ const patch = readFileSync(patchUrl, 'utf8')
 /**
  * 像客户端模块系统那样加载发布出去的 bundle：普通脚本 + 打桩的 `require`。
  * @param options - `buttonAsForwardRef` 复刻真实 primitives（`Button` 是 `forwardRef(...)`，
- * 因此是对象而不是函数）；`omit` 去掉一个 primitive，模拟更旧的部署；`toast` 加上 `Toast`；
+ * 因此是对象而不是函数）；`omit` 去掉一个 primitive，模拟更旧的部署；
  * `primitivesModule: false` 让宿主干脆没暴露这个包（`require` 抛异常）；
  * `hooks` 换掉默认的静态 hooks，用一套会真的重渲染的实现
  */
@@ -36,10 +37,10 @@ function loadBundle(options = {}) {
     SegmentedControl: primitive(),
     SettingsForm: primitive(),
     SettingsValueField: primitive(),
+    Switch: primitive(),
     Tag: primitive(),
   }
   if (options.omit !== undefined) delete primitives[options.omit]
-  if (options.toast === true) primitives.Toast = primitive()
   const stubs = {
     react: options.hooks ?? {
       createElement: (type, props, ...children) => {
@@ -128,6 +129,61 @@ function flatText(tree) {
   if (typeof tree === 'string' || typeof tree === 'number') return String(tree)
   if (Array.isArray(tree)) return tree.map(flatText).join('')
   return `${flatText(tree.props?.children)}${flatText(tree.children)}`
+}
+
+/** 一个元素的文字（按钮的标签就是这么取：children 是字符串或数组两种都有）。 */
+function labelOf(node) {
+  const children = node?.children
+  return Array.isArray(children) ? children.join('') : String(children ?? '')
+}
+
+/** 换掉 `fetch` 跑一段，跑完原样还回去——每个用例都写 try/finally 只会遮住断言。 */
+async function withFetch(handler, run) {
+  const original = globalThis.fetch
+  globalThis.fetch = handler
+  try {
+    return await run()
+  } finally {
+    globalThis.fetch = original
+  }
+}
+
+/**
+ * 临时改写几个全局事实（`location` / `navigator` / `__DSH_BOOT__`），跑完连描述符一起还原。
+ *
+ * 页面只从 `globalThis` 上读它们（`remoteOf` / `dshVersion` / `copyDiagnose`），所以在 Node 里
+ * 打桩就能复现「Host 在另一台机器上 / 剪贴板被拒 / 有或没有 DSH 版本」这几种现场，不需要真浏览器。
+ * @param values - 全局名到临时值
+ * @param run - 在打桩期间执行的函数
+ */
+async function withGlobals(values, run) {
+  const saved = new Map()
+  for (const [key, value] of Object.entries(values)) {
+    saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
+    Object.defineProperty(globalThis, key, { configurable: true, enumerable: true, writable: true, value })
+  }
+  try {
+    return await run()
+  } finally {
+    for (const [key, descriptor] of saved) {
+      if (descriptor === undefined) delete globalThis[key]
+      else Object.defineProperty(globalThis, key, descriptor)
+    }
+  }
+}
+
+/** describe 给页面的平台描述：路径改写与文案都按它分叉。 */
+const WINDOWS = { os: 'win32', pathStyle: 'windows' }
+const POSIX = { os: 'linux', pathStyle: 'posix' }
+
+/**
+ * 把排队的 promise 链跑完。
+ *
+ * 用假定时器推进启动检查时不能用 `setTimeout` 等（它被换成了假时钟），`setImmediate` 不在被替换
+ * 的 API 里，正好用来清空微任务队列。
+ */
+async function settleMicrotasks() {
+  for (let turn = 0; turn < 10; turn += 1) await new Promise((resolve) => setImmediate(resolve))
 }
 
 /**
@@ -227,12 +283,21 @@ async function pump(hooks, render, frames = 4) {
   }
 }
 
-/** 一个记录浏览器半边注册了什么、并收集清理函数的插件上下文。 */
+/**
+ * 一个记录浏览器半边注册了什么、并收集清理函数的插件上下文。
+ *
+ * `slots.inject` 必须**真的**调那个 `register`：提示卡就是走这条路的，直接抛异常会让
+ * 「有失败时挂了一张卡」变成不可测。真实壳子缺槽位时由 `show()` 自己的 `try/catch` 兜住。
+ */
 function fakeContext() {
   const registrations = []
   const disposers = []
   return {
     registrations,
+    /** 某个槽位上注册过的组件（提示卡用它）。 */
+    registered(name) {
+      return registrations.filter((entry) => entry.kind === 'slot' && entry.name === name)
+    },
     disposeAll() {
       while (disposers.length > 0) disposers.pop()()
     },
@@ -242,13 +307,12 @@ function fakeContext() {
         if (typeof dispose === 'function') disposers.push(dispose)
       },
       slots: {
-        inject: (name, register) => {
-          if (name === 'shell.overlay') throw new Error('this deployment has no overlay slot')
-          return register()
-        },
+        inject: (name, register) => register(),
         register: (options, component) => {
-          registrations.push({ kind: 'slot', name: options.name, options, component })
-          return () => {}
+          // 留下 `disposed`：提示卡「修好以后静默撤卡」是靠这个 disposer 撤的，测试要看得见。
+          const entry = { kind: 'slot', name: options.name, options, component, disposed: false }
+          registrations.push(entry)
+          return () => { entry.disposed = true }
         },
       },
       locale: {
@@ -330,7 +394,7 @@ test('a host that never exposed the primitives module shows a line instead of th
   const tree = mod.ConfigPage({ t: (key) => key, form, view: 'page' })
   assert.equal(tree.type, 'p')
   assert.equal(tree.props.role, 'status')
-  assert.equal(flatText(tree), 'primitivesMissing')
+  assert.equal(flatText(tree), 'deploy.primitivesMissing')
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /dsh-local-search/)
 })
@@ -346,10 +410,17 @@ test('the page leaves the loading line once the description arrives', async () =
   try {
     const page = mountPage(mod, hooks)
     page.render()
-    assert.match(flatText(page.tree()), /describeLoading/, 'the first frame asks the reader to wait')
+    assert.match(flatText(page.tree()), /describe\.loading/, 'the first frame asks the reader to wait')
     await page.settle(() => sectionTitles(page.tree()).length > 0)
-    assert.deepEqual(sectionTitles(page.tree()), ['sectionFiles', 'sectionContent', 'sectionScopes', 'sectionLimits'])
-    assert.ok(!flatText(page.tree()).includes('describeLoading'))
+    // 五个小节：能力两节 + 范围 / 上限 / 启动；标题键是点号分段的语言包键。
+    assert.deepEqual(sectionTitles(page.tree()), [
+      'section.files',
+      'section.content',
+      'section.scopes',
+      'section.limits',
+      'section.startup',
+    ])
+    assert.ok(!flatText(page.tree()).includes('describe.loading'))
   } finally {
     globalThis.fetch = original
   }
@@ -399,7 +470,9 @@ test('a failed startup write is shown on the page, not only in the log', async (
   globalThis.fetch = async () => ({
     ok: true,
     status: 200,
-    json: async () => describeConfig({ error: 'SETTINGS_CONFLICT: the namespace is locked' }),
+    json: async () => describeConfig({
+      autoconfig: { pending: false, ran: true, error: 'SETTINGS_CONFLICT: the namespace is locked' },
+    }),
   })
   try {
     const page = mountPage(mod, hooks)
@@ -407,26 +480,30 @@ test('a failed startup write is shown on the page, not only in the log', async (
     await page.settle(() => sectionTitles(page.tree()).length > 0)
     const notice = findElement(page.tree(), (node) => node.props?.role === 'alert')
     assert.ok(notice !== undefined, 'the failure must be visible on the page')
-    assert.match(flatText(notice), /autoconfigFailed/)
+    assert.match(flatText(notice), /autoconfig\.failed/)
     assert.match(flatText(notice), /SETTINGS_CONFLICT/)
   } finally {
     globalThis.fetch = original
   }
 })
 
-test('a failed description fetch leaves a retry instead of the loading line', async () => {
+test('a failed description fetch shows the reason from the body, not just the status', async () => {
   const hooks = liveHooks()
   const { mod } = loadBundle({ hooks: hooks.react })
   const original = globalThis.fetch
-  globalThis.fetch = async () => ({ ok: false, status: 503, json: async () => ({}) })
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({ ok: false, code: 'PROBE_FAILED', message: 'settle failed' }),
+  })
   try {
     const page = mountPage(mod, hooks)
     page.render()
-    await page.settle(() => flatText(page.tree()).includes('describeFailed'))
+    await page.settle(() => flatText(page.tree()).includes('describe.failed'))
     const text = flatText(page.tree())
-    assert.ok(text.includes('describeFailed'), `expected the failure line, got: ${text.slice(0, 160)}`)
-    assert.ok(text.includes('HTTP 503'))
-    assert.ok(text.includes('retry'))
+    assert.ok(text.includes('describe.failed'), `expected the failure line, got: ${text.slice(0, 160)}`)
+    assert.ok(text.includes('settle failed'))
+    assert.ok(text.includes('action.retry'))
   } finally {
     globalThis.fetch = original
   }
@@ -494,13 +571,13 @@ test('a failing save check asks in a dialog before writing anyway', async () => 
     assert.equal(mutations, 0, 'a failing check must not write')
     const modal = openModal(page.tree(), stubs)
     assert.ok(modal !== undefined, 'the failed check must ask through a dialog')
-    assert.equal(modal.props.title, 'saveAnywayTitle')
-    assert.match(modal.props.description, /saveEngineDown/)
+    assert.equal(modal.props.title, 'dialog.saveAnyway.title')
+    assert.match(modal.props.description, /error\.engineDown/)
     // 保存按钮不改字：弹窗里的「仍然保存」才是那个第二下。
-    assert.equal(page.tree().props.labels.save, 'save')
+    assert.equal(page.tree().props.labels.save, 'action.save')
 
     // 弹窗里选「仍然保存」：用户已经知道引擎不可用，按他说的写。
-    modalButton(modal, 'saveAnyway').props.onClick()
+    modalButton(modal, 'action.saveAnyway').props.onClick()
     await pump(hooks, page.render)
     assert.equal(mutations, 1)
   } finally {
@@ -535,10 +612,10 @@ test('a rejected draft gets a dialog without a force-save way out', async () => 
     const modal = openModal(page.tree(), stubs)
     assert.ok(modal !== undefined, 'a rejected draft must be explained in a dialog')
     // 硬错是「没法保存」+ 原因，不是页内那句「…，没有写入。」。
-    assert.equal(modal.props.title, 'saveBlockedTitle')
+    assert.equal(modal.props.title, 'dialog.blocked.title')
     // 句号来自字典（英文是 "."），不写死在模板里。
-    assert.equal(modal.props.description, 'savePathMissingfullStop')
-    assert.equal(modalButton(modal, 'saveAnyway'), undefined, 'a hard error must not offer a force save')
+    assert.equal(modal.props.description, 'error.pathMissingpunct.fullStop')
+    assert.equal(modalButton(modal, 'action.saveAnyway'), undefined, 'a hard error must not offer a force save')
     // 再按保存也不会写：结论没变。
     page.tree().props.onSave()
     await pump(hooks, page.render)
@@ -575,19 +652,19 @@ test('without Modal the page falls back to the in-page confirmation', async () =
     page.tree().props.onSave()
     await pump(hooks, page.render)
     assert.equal(mutations, 0)
-    assert.match(flatText(page.tree()), /saveEngineDown/)
-    assert.equal(page.tree().props.labels.save, 'saveAnyway')
+    assert.match(flatText(page.tree()), /error\.engineDown/)
+    assert.equal(page.tree().props.labels.save, 'action.saveAnyway')
     page.tree().props.onSave()
     await pump(hooks, page.render)
     assert.equal(mutations, 1)
 
     // 重置也还是「点两下」：第一下换成确认按钮，第二下才写。
     const resetEntry = () => findElement(page.tree(), (node) => node.type !== undefined
-      && Array.isArray(node.children) && node.children.join('') === 'reset')
+      && Array.isArray(node.children) && node.children.join('') === 'action.reset')
     resetEntry().props.onClick()
     await pump(hooks, page.render)
     assert.equal(mutations, 1, 'the first press only asks')
-    const confirm = () => findElement(page.tree(), (node) => Array.isArray(node.children) && node.children.join('') === 'resetConfirm')
+    const confirm = () => findElement(page.tree(), (node) => Array.isArray(node.children) && node.children.join('') === 'action.resetConfirm')
     assert.ok(confirm() !== undefined, 'the button must ask again')
     confirm().props.onClick()
     await pump(hooks, page.render)
@@ -601,10 +678,10 @@ test('a primitive missing from an older deployment falls back instead of throwin
   const { mod } = loadBundle({ omit: 'SegmentedControl' })
   const tree = mod.ConfigPage({ t: (key) => key, form: { state: { value: {}, user: {} } }, view: 'page' })
   assert.equal(tree.type, 'p')
-  assert.equal(flatText(tree), 'primitivesMissing')
+  assert.equal(flatText(tree), 'deploy.primitivesMissing')
 })
 
-test('fields carry no badge or per-field reset; three candidate reset rows share one handler', async () => {
+test('fields carry no badge or per-field reset; one reset row serves the whole table', async () => {
   const hooks = liveHooks()
   const { mod, stubs } = loadBundle({ hooks: hooks.react })
   const originalFetch = globalThis.fetch
@@ -632,14 +709,19 @@ test('fields carry no badge or per-field reset; three candidate reset rows share
       assert.ok(!('onReset' in field.props), `${field.props.id} must not carry a per-field reset`)
       assert.notEqual(field.props.overridden, true, `${field.props.id} must not carry the badge`)
     }
-    const labels = buttons.map((button) => (Array.isArray(button.children) ? button.children.join('') : String(button.children)))
-    // 只剩一个入口：描述正下方那个实心按钮。
-    assert.deepEqual(labels.filter((label) => label.startsWith('reset')), ['reset'])
-    const resetButtons = buttons.filter((button) => String(button.children) === 'reset')
+    const labels = buttons.map(labelOf)
+    // 只剩一个入口：描述正下方那个实心按钮；诊断是另一个动词，不算重置。
+    assert.deepEqual(labels.filter((label) => label === 'action.reset'), ['action.reset'])
+    const resetButtons = buttons.filter((button) => labelOf(button) === 'action.reset')
     assert.deepEqual(resetButtons.map((button) => button.props.variant), ['primary'])
     const topLevel = page.tree().props.children
-    assert.equal(topLevel[0].props.key, 'reset-1')
-    assert.deepEqual(topLevel.map((child) => child.props?.key ?? '').filter((key) => key.startsWith('reset-')), ['reset-1'])
+    // 入口和诊断按钮同一行，行内顺序固定：先重置，后诊断。
+    assert.equal(topLevel[0].props.key, 'actions')
+    assert.deepEqual(topLevel[0].children.map(labelOf), ['action.reset', 'diagnose.copy'])
+    // 字段里没有第二个重置入口。
+    for (const cell of collectElements(page.tree(), (node) => typeof node.props?.onBlur === 'function')) {
+      assert.equal(findElement(cell, (node) => labelOf(node) === 'action.reset'), undefined)
+    }
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -666,7 +748,7 @@ test('the reset button asks in a dialog, then writes one atomic re-setup', async
     await page.settle(() => sectionTitles(page.tree()).length > 0)
 
     const resetButton = () => findElement(page.tree(), (node) => node.type !== undefined
-      && Array.isArray(node.children) && node.children.join('') === 'reset')
+      && Array.isArray(node.children) && node.children.join('') === 'action.reset')
 
     assert.ok(resetButton() !== undefined, 'the reset entry must be on the page')
     resetButton().props.onClick()
@@ -675,11 +757,11 @@ test('the reset button asks in a dialog, then writes one atomic re-setup', async
     assert.equal(writes.length, 0)
     const modal = openModal(page.tree(), stubs)
     assert.ok(modal !== undefined, 'the reset must confirm in a dialog')
-    assert.equal(modal.props.title, 'resetTitle')
-    assert.equal(modal.props.description, 'resetHint')
+    assert.equal(modal.props.title, 'dialog.reset.title')
+    assert.equal(modal.props.description, 'dialog.reset.hint')
     // 标题与确认按钮都是「重置」：弹窗里没有第二遍「确认重置」这种重复。
-    assert.ok(modalButton(modal, 'cancel') !== undefined, 'the dialog can be cancelled')
-    modalButton(modal, 'reset').props.onClick()
+    assert.ok(modalButton(modal, 'action.cancel') !== undefined, 'the dialog can be cancelled')
+    modalButton(modal, 'action.reset').props.onClick()
     await pump(hooks, page.render)
 
     assert.equal(writes.length, 1)
@@ -692,7 +774,7 @@ test('the reset button asks in a dialog, then writes one atomic re-setup', async
       { op: 'set', path: fills[1].path, value: probed.anytxt.url },
     ])
     assert.deepEqual(ops.at(-1), { op: 'set', path: marker, value: true })
-    assert.match(flatText(page.tree()), /resetDone/)
+    assert.match(flatText(page.tree()), /reset\.done/)
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -715,7 +797,7 @@ test('the test connection result lives in a dialog that can probe again', async 
     await page.settle(() => sectionTitles(page.tree()).length > 0)
 
     // 测试控件挂在内容节的页脚（`Section` 在这里只是个元素，页脚是 prop，不会出现在 children 里）。
-    const content = findElement(page.tree(), (node) => node.props?.title === 'sectionContent')
+    const content = findElement(page.tree(), (node) => node.props?.title === 'section.content')
     const testButton = findElement(content.props.footer, (node) => node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Button)
     assert.ok(testButton !== undefined, 'the test control must be on the page')
     testButton.props.onClick()
@@ -724,19 +806,19 @@ test('the test connection result lives in a dialog that can probe again', async 
     assert.equal(probes, 1)
     const modal = openModal(page.tree(), stubs)
     assert.ok(modal !== undefined, 'the result must open in a dialog')
-    assert.equal(modal.props.title, 'test')
+    assert.equal(modal.props.title, 'action.test')
     // 正文就是一个两行的无序列表：一行一个引擎，没有地址行、没有说明段。
     assert.equal(modal.props.description, undefined)
     const list = findElement(modal.props.children, (node) => node.type === 'ul')
     assert.ok(list !== undefined, 'the result must be a list')
     // 壳子给 `.body` 固定加 20px 上边距；没有 description 时用负边距拉回去，标题下不留空档。
     assert.equal(modal.props.children.props.style.marginTop, '-20px')
-    assert.match(flatText(list), /everythingOk · 1\.5\.0/)
-    assert.match(flatText(list), /anytxtOk/)
+    assert.match(flatText(list), /status\.everything\.ok · 1\.5\.0/)
+    assert.match(flatText(list), /status\.anytxt\.ok/)
     // 结论只出现一次：弹窗之外不再留一份页内结果。
-    assert.equal((flatText(page.tree()).match(/everythingOk/g) ?? []).length, 1)
+    assert.equal((flatText(page.tree()).match(/status\.everything\.ok/g) ?? []).length, 1)
 
-    modalButton(modal, 'testAgain').props.onClick()
+    modalButton(modal, 'action.testAgain').props.onClick()
     await pump(hooks, page.render)
     assert.equal(probes, 2)
   } finally {
@@ -744,39 +826,115 @@ test('the test connection result lives in a dialog that can probe again', async 
   }
 })
 
-test('windows path drafts are rewritten to one standard spelling before the write', async () => {
+test('path drafts are rewritten with the path style the Host reports', () => {
   const { mod } = loadBundle()
-  const { normalizeWinPath, normalizeWinPaths, normalizeStaged } = mod.internals
-  // 盘符大写、只用反斜杠、去掉多余与末尾的分隔符。
-  assert.equal(normalizeWinPath('d:/alpha'), 'D:\\alpha')
-  assert.equal(normalizeWinPath('d:\\alpha\\'), 'D:\\alpha')
-  assert.equal(normalizeWinPath('  C:\\\\Tools\\\\es.exe  '), 'C:\\Tools\\es.exe')
+  const { normalizePath, normalizePaths } = mod.internals
+  // Windows 风格：盘符大写、只用 `\`、去掉多余的与末尾的分隔符。
+  assert.equal(normalizePath('d:/Alpha/', WINDOWS), 'D:\\Alpha')
+  assert.equal(normalizePath('d:\\Alpha\\', WINDOWS), 'D:\\Alpha')
+  assert.equal(normalizePath('  C:\\\\Tools\\\\es.exe  ', WINDOWS), 'C:\\Tools\\es.exe')
   // 盘符根只留一个反斜杠：`D:\` 不能变成 `D:`。
-  assert.equal(normalizeWinPath('d:/'), 'D:\\')
-  assert.equal(normalizeWinPath('\\\\server\\share\\'), '\\\\server\\share')
-  assert.equal(normalizeWinPath('//server/share'), '\\\\server\\share')
-  // 名字里的空格、中文、带空格的目录名都不动；POSIX 写法也不动。
-  assert.equal(normalizeWinPath('D:\\Alpha\\我的项目\\drawio a'), 'D:\\Alpha\\我的项目\\drawio a')
-  assert.equal(normalizeWinPath('/home/me'), '/home/me')
-  assert.equal(normalizeWinPath(''), '')
+  assert.equal(normalizePath('d:/', WINDOWS), 'D:\\')
+  assert.equal(normalizePath('\\\\server\\share\\', WINDOWS), '\\\\server\\share')
+  assert.equal(normalizePath('//server/share', WINDOWS), '\\\\server\\share')
+  // 名字里的空格、中文、带空格的目录名都不动。
+  assert.equal(normalizePath('D:\\Alpha\\我的项目\\drawio a', WINDOWS), 'D:\\Alpha\\我的项目\\drawio a')
+  // `~` 与 POSIX 写法在 Windows 上也不改：换分隔符只会造出一个不存在的路径。
+  assert.equal(normalizePath('~/x', WINDOWS), '~/x')
+  assert.equal(normalizePath('/home/me', WINDOWS), '/home/me')
+  assert.equal(normalizePath('', WINDOWS), '')
+  // POSIX 风格：一切原样，只 trim（`/home/me` 不会被改成 `\home\me`）。
+  assert.equal(normalizePath('d:/Alpha/', POSIX), 'd:/Alpha/')
+  assert.equal(normalizePath('  /home/me/  ', POSIX), '/home/me/')
+  assert.equal(normalizePath('\\\\server\\share\\', POSIX), '\\\\server\\share\\')
+  assert.equal(normalizePath('C:\\Tools\\es.exe', POSIX), 'C:\\Tools\\es.exe')
   // 分号列表逐个改写，空项丢掉。
-  assert.equal(normalizeWinPaths('d:/a/; e:\\b ;'), 'D:\\a;E:\\b')
+  assert.equal(normalizePaths('d:/a/; e:\\b ;', WINDOWS), 'D:\\a;E:\\b')
+  assert.equal(normalizePaths(' /home/a ; /home/b ; ', POSIX), '/home/a;/home/b')
+})
 
-  // 只改带路径语义的字段；地址不是路径，一个字符都不动。
+test('the page rewrites paths exactly like the Host does', () => {
+  // 路径语义在页面与工具两侧各写一遍（浏览器半边不能 import ESM），所以同一组输入必须同答案。
+  const { mod } = loadBundle()
+  const cases = [
+    'd:/Alpha/', 'd:\\Alpha\\', '  C:\\\\Tools\\\\es.exe  ', 'd:/', 'C:', 'c:/',
+    '\\\\server\\share\\', '//server/share', '\\\\server',
+    'D:\\Alpha\\我的项目\\drawio a', '~/x', '~', '/home/me', '', '   ', 'relative\\dir',
+    '/home/a; /home/b ;', 'd:/a/; e:\\b ;',
+  ]
+  for (const platform of [WINDOWS, POSIX, 'win32', 'linux']) {
+    for (const text of cases) {
+      assert.equal(mod.internals.normalizePath(text, platform), hostNormalizePath(text, platform),
+        `normalizePath(${JSON.stringify(text)}) on ${JSON.stringify(platform)}`)
+      assert.equal(mod.internals.normalizePaths(text, platform), hostNormalizePaths(text, platform),
+        `normalizePaths(${JSON.stringify(text)}) on ${JSON.stringify(platform)}`)
+    }
+  }
+})
+
+test('normalizeStaged rewrites only what the platform calls a path', () => {
+  const { mod } = loadBundle()
+  const { normalizeStaged } = mod.internals
   const fields = new Map([
     ['files.everything.esPath', { verifyPath: true }],
     ['scopes.workspaceRoot', { verifyDir: true }],
     ['content.anytxt.url', { probeEndpoint: true }],
   ])
-  const { next, changed } = normalizeStaged({
+  const staged = {
     'files.everything.esPath': { op: 'set', text: 'c:/tools/es.exe' },
     'scopes.workspaceRoot': { op: 'set', text: 'd:/alpha/' },
     'content.anytxt.url': { op: 'set', text: 'HTTP://127.0.0.1:9920' },
-  }, fields)
-  assert.equal(changed, true)
-  assert.equal(next['files.everything.esPath'].text, 'C:\\tools\\es.exe')
-  assert.equal(next['scopes.workspaceRoot'].text, 'D:\\alpha')
-  assert.equal(next['content.anytxt.url'].text, 'HTTP://127.0.0.1:9920')
+  }
+  const windows = normalizeStaged(staged, fields, WINDOWS)
+  assert.equal(windows.changed, true)
+  assert.equal(windows.next['files.everything.esPath'].text, 'C:\\tools\\es.exe')
+  assert.equal(windows.next['scopes.workspaceRoot'].text, 'D:\\alpha')
+  // 地址不是路径，一个字符都不动。
+  assert.equal(windows.next['content.anytxt.url'].text, 'HTTP://127.0.0.1:9920')
+  // POSIX 主机上一项都不改：`changed` 必须是 false，否则保存会多一次没有意义的回写。
+  const posixStaged = { ...staged, 'scopes.workspaceRoot': { op: 'set', text: '/home/me' } }
+  const posix = normalizeStaged(posixStaged, fields, POSIX)
+  assert.equal(posix.changed, false)
+  assert.deepEqual(posix.next, posixStaged)
+})
+
+test('saving on a POSIX host keeps the paths the user typed', async () => {
+  // 回归：页面曾经在浏览器里无条件按 Windows 改写，`/home/me` 被换成 `\home\me` 就指向一个
+  // 不存在的目录。平台事实由 describe 给，保存与失焦校验都按它走。
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const asked = []
+  let ops
+  await withFetch(async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) {
+      return { ok: true, status: 200, json: async () => describeConfig({ platform: POSIX }) }
+    }
+    asked.push(target)
+    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+  }, async () => {
+    const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+
+    const edit = (key, text) => fieldNode(page.tree(), key).props.onEdit(text)
+    edit('scopes.workspaceRoot', '/home/me')
+    edit('scopes.allRoots', '/home/a; /home/b ;')
+    edit('files.everything.esPath', '/opt/es/es')
+    await pump(hooks, page.render)
+
+    page.tree().props.onSave()
+    await pump(hooks, page.render)
+
+    const written = Object.fromEntries((ops ?? []).map((op) => [op.path.join('.'), op.value]))
+    assert.equal(written['scopes.workspaceRoot'], '/home/me')
+    assert.equal(written['scopes.allRoots'], '/home/a;/home/b')
+    assert.equal(written['files.everything.esPath'], '/opt/es/es')
+    // 保存前的校验也用同一份平台：查询串里是 `/home/...`，不是 `\home\...`。
+    const params = new URLSearchParams(String(asked[0]).split('?')[1])
+    assert.deepEqual(params.getAll('dir'), ['/home/me', '/home/a', '/home/b'])
+    assert.equal(params.get('esPath'), '/opt/es/es')
+  })
 })
 
 test('the Host answer is refilled into the draft before it is written', async () => {
@@ -786,7 +944,7 @@ test('the Host answer is refilled into the draft before it is written', async ()
   let ops
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     // 磁盘上的真实写法：盘符、目录名的大小写都与输入不同。
     return {
       ok: true,
@@ -829,7 +987,7 @@ test('saving a path field writes the standard spelling when the Host does not an
   let ops
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
   }
   try {
@@ -862,7 +1020,7 @@ test('the test control sends the es.exe path from the field', async () => {
   let asked = ''
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     asked = target
     // 路径不存在：路由在探测之前就拒了，测试不该拿已保存的那个报「正常」。
     return { ok: false, status: 400, json: async () => ({ ok: false, code: 'ES_PATH_REJECTED' }) }
@@ -875,7 +1033,7 @@ test('the test control sends the es.exe path from the field', async () => {
     fieldNode(page.tree(), 'files.everything.esPath').props.onEdit('C:/nope/es.exe1')
     await pump(hooks, page.render)
 
-    const content = findElement(page.tree(), (node) => node.props?.title === 'sectionContent')
+    const content = findElement(page.tree(), (node) => node.props?.title === 'section.content')
     const button = findElement(content.props.footer, (node) => node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Button)
     button.props.onClick()
     await pump(hooks, page.render)
@@ -884,7 +1042,7 @@ test('the test control sends the es.exe path from the field', async () => {
     assert.equal(params.get(mod.DRAFT_PATH_PARAM), 'C:\\nope\\es.exe1')
     // 单行结论走 description，和别的弹窗正文同一个位置、同一个字号。
     const modal = openModal(page.tree(), stubs)
-    assert.equal(modal.props.description, 'savePathMissingfullStop')
+    assert.equal(modal.props.description, 'error.pathMissingpunct.fullStop')
     assert.equal(modal.props.children, undefined)
   } finally {
     globalThis.fetch = originalFetch
@@ -898,7 +1056,7 @@ test('a path field asks the Host on blur and flags what is missing', async () =>
   let asked = ''
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     asked = target
     return { ok: false, status: 400, json: async () => ({ ok: false, code: 'DIR_REJECTED' }) }
   }
@@ -919,8 +1077,10 @@ test('a path field asks the Host on blur and flags what is missing', async () =>
     await pump(hooks, page.render)
 
     assert.match(asked, /checkOnly=1/, 'the blur check must not spend an es.exe spawn')
+    // 发出去的草稿已经是平台的标准写法：`C:/nope` → `C:\nope`。
+    assert.equal(new URL(asked, 'http://localhost').searchParams.get(mod.DRAFT_DIR_PARAM), 'C:\\nope')
     assert.equal(field().props.invalid, true)
-    assert.equal(field().props.invalidLabel, 'invalidDir')
+    assert.equal(field().props.invalidLabel, 'error.invalidDir')
 
     // 值一改，红字就收回。
     field().props.onEdit('C:/nope2')
@@ -959,7 +1119,7 @@ test('the Anytxt address is checked on blur too, without a request', async () =>
     cell().props.onBlur()
     await pump(hooks, page.render)
     assert.equal(field().props.invalid, true)
-    assert.equal(field().props.invalidLabel, 'invalidLocal')
+    assert.equal(field().props.invalidLabel, 'error.invalidLocal')
     assert.equal(asked, 0, 'a local-address check needs no request')
 
     // 换回本机地址再失焦，红字收回。
@@ -979,7 +1139,7 @@ test('a directory field says when the path is actually a file', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     return { ok: false, status: 400, json: async () => ({ ok: false, code: 'DIR_NOT_DIRECTORY' }) }
   }
   try {
@@ -997,7 +1157,7 @@ test('a directory field says when the path is actually a file', async () => {
     await pump(hooks, page.render)
 
     assert.equal(field().props.invalid, true)
-    assert.equal(field().props.invalidLabel, 'invalidNotDir')
+    assert.equal(field().props.invalidLabel, 'error.invalidNotDir')
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -1009,7 +1169,7 @@ test('the test control explains a path that is a directory, not a file', async (
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (url) => {
     const target = String(url)
-    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
     return { ok: false, status: 400, json: async () => ({ ok: false, code: 'ES_PATH_NOT_FILE' }) }
   }
   try {
@@ -1019,14 +1179,14 @@ test('the test control explains a path that is a directory, not a file', async (
     fieldNode(page.tree(), 'files.everything.esPath').props.onEdit('C:/Tools')
     await pump(hooks, page.render)
 
-    const content = findElement(page.tree(), (node) => node.props?.title === 'sectionContent')
+    const content = findElement(page.tree(), (node) => node.props?.title === 'section.content')
     findElement(content.props.footer, (node) => node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Button)
       .props.onClick()
     await pump(hooks, page.render)
 
     // 「是个目录」和「不存在」是两种改法，弹窗不能都说「找不到文件」。
     const modal = openModal(page.tree(), stubs)
-    assert.equal(modal.props.description, 'savePathNotFilefullStop')
+    assert.equal(modal.props.description, 'error.pathNotFilepunct.fullStop')
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -1097,46 +1257,155 @@ test('both dictionaries carry every key the Host describe asks the page to rende
   const keys = new Set()
   for (const section of describeConfig().sections) {
     keys.add(section.titleKey)
-    for (const backend of section.backends ?? []) if (backend.labelKey !== undefined) keys.add(backend.labelKey)
+    for (const backend of section.backends ?? []) keys.add(backend.labelKey)
     for (const field of section.fields) {
       keys.add(field.labelKey)
       keys.add(field.hintKey)
       for (const choice of field.choices ?? []) keys.add(choice.labelKey)
     }
   }
-  // 表单外壳与测试控件用到的键。
+  // 页面自己说出来的那些键：加载 / 失败 / 保存 / 弹窗 / 探测结果 / 右下角提示卡 / 诊断 / 另一台机器。
   for (const key of [
-    'unavailable', 'primitivesMissing', 'autoconfigFailed', 'readOnly', 'saveFailed', 'save', 'saving', 'invalidValue', 'invalidNumber',
-    'invalidFile', 'invalidDir', 'invalidLocal',
-    'description', 'note', 'itemLabel', 'describeLoading', 'describeFailed', 'retry',
-    'saveAnyway', 'saveAnywayTitle', 'saveBlockedTitle', 'saveEngineDown', 'saveNoWrite',
-    'listSeparator', 'colon', 'fullStop',
-    'savePathMissing', 'saveEndpointInvalid',
-    'close', 'cancel', 'reset', 'resetTitle', 'resetConfirm', 'resetHint', 'resetting', 'resetDone', 'resetFailed',
-    'saveDirMissing',
-    'test', 'testing', 'testAgain', 'testHint', 'testLocalOnly', 'testFailed',
-    'everythingOk', 'everythingDown', 'anytxtOk', 'anytxtDown', 'downloadEverything', 'downloadAnytxt',
-    'fixEverythingNotRunning', 'fixEverythingNotInstalled', 'fixEverythingEsMissing', 'noticeEnginesDown',
+    'description', 'note', 'item.label', 'describe.loading', 'describe.failed', 'autoconfig.failed', 'action.retry',
+    'deploy.unavailable', 'deploy.primitivesMissing', 'deploy.readOnly', 'error.saveFailed', 'action.save', 'action.saving',
+    'error.invalidValue', 'error.invalidNumber', 'error.invalidFile', 'error.invalidDir', 'error.invalidNotFile',
+    'error.invalidNotDir', 'error.invalidLocal',
+    'action.saveAnyway', 'dialog.saveAnyway.title', 'dialog.blocked.title', 'error.engineDown', 'error.noWrite',
+    'punct.listSeparator', 'punct.colon', 'punct.fullStop',
+    'error.pathMissing', 'error.pathNotFile', 'error.dirMissing', 'error.dirNotDir', 'error.endpointInvalid',
+    'action.close', 'action.cancel', 'action.reset', 'action.resetConfirm', 'dialog.reset.title', 'dialog.reset.hint',
+    'action.resetting', 'reset.done', 'reset.failed',
+    'action.test', 'action.testing', 'action.testAgain', 'test.hint', 'error.testLocalOnly', 'error.testFailed',
+    'status.everything.ok', 'status.everything.down', 'status.anytxt.ok', 'status.anytxt.down',
+    'fix.download.everything', 'fix.anytxt.notRunning', 'fix.anytxt.unknown', 'fix.anytxt.install',
+    'fix.everything.notRunning', 'fix.everything.notInstalled', 'fix.everything.esMissing',
+    'notice.title', 'notice.close', 'remote.note',
+    'diagnose.copy', 'diagnose.title', 'diagnose.hint', 'diagnose.loading', 'diagnose.error', 'diagnose.copyAction',
+    'diagnose.copied', 'diagnose.copyFailed',
   ]) keys.add(key)
 
   for (const [locale, dictionary] of Object.entries({ en: mod.en, zh: mod.zh })) {
-    for (const key of keys) {
-      assert.equal(typeof dictionary[key], 'string', `${locale} is missing ${key}`)
-      assert.ok(dictionary[key].length > 0, `${locale}.${key} is empty`)
+    const missing = [...keys].filter((key) => typeof dictionary[key] !== 'string' || dictionary[key] === '')
+    assert.deepEqual(missing, [], `${locale} cannot render these keys: ${missing.join(', ')}`)
+  }
+  // 两种基线是同一棵树：少一个键，切语言就会冒出键名。
+  assert.deepEqual(Object.keys(mod.en).sort(), Object.keys(mod.zh).sort())
+  for (const dictionary of [mod.en, mod.zh]) {
+    for (const [key, value] of Object.entries(dictionary)) {
+      assert.equal(typeof value, 'string', `${key} must be text`)
+      assert.ok(value.length > 0, `${key} is empty`)
     }
+  }
+  // 键名点号分段，语言包才能整棵复制；0.3 的 camelCase 平键一个都不该留下。
+  for (const key of Object.keys(mod.en)) {
+    if (key === 'description' || key === 'note') continue
+    assert.match(key, /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9-]+)+$/, `${key} must be a dotted key`)
   }
   assert.notEqual(mod.en.description, mod.zh.description)
   // 能力名按各自语言，后端一律产品名。
-  assert.equal(mod.zh.sectionFiles, '文件名检索')
-  assert.equal(mod.en.sectionFiles, 'File names')
-  assert.equal(mod.zh.engineEverything, 'Everything')
-  assert.equal(mod.zh.engineAnytxt, 'Anytxt')
+  assert.equal(mod.zh['section.files'], '文件名检索')
+  assert.equal(mod.en['section.files'], 'File names')
+  assert.equal(mod.zh['engine.everything'], 'Everything')
+  assert.equal(mod.zh['engine.anytxt'], 'Anytxt')
+})
+
+/** `lib/locales/` 里的语言 id（文件名去扩展名）；目录不存在时为空表。 */
+function localePackNames() {
+  try {
+    return readdirSync(new URL('../lib/locales/', import.meta.url))
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+/** 一段文案里的 `{name}` 占位符集合；语序不同，数量必须一致。 */
+function placeholders(text) {
+  return new Set(String(text).match(/\{[A-Za-z0-9_]+\}/g) ?? [])
+}
+
+test('every locale pack carries exactly the baseline keys and placeholders', (t) => {
+  const { mod } = loadBundle()
+  const baseline = Object.keys(mod.en).sort()
+  const names = localePackNames()
+  if (names.length === 0) {
+    // 目录为空时跳过：没有译文可比，缺目录不是故障。
+    t.skip('lib/locales/ has no packs')
+    return
+  }
+  for (const lang of names) {
+    const pack = JSON.parse(readFileSync(new URL(`../lib/locales/${lang}.json`, import.meta.url), 'utf8'))
+    // 半份语言不合并：多一个或少一个键都失败，缺键就是页面上冒出键名。
+    assert.deepEqual(Object.keys(pack).sort(), baseline, `${lang} must carry exactly the baseline key set`)
+    for (const key of baseline) {
+      assert.equal(typeof pack[key], 'string', `${lang}.${key} must be text`)
+      assert.ok(pack[key].length > 0, `${lang}.${key} is empty`)
+      assert.deepEqual([...placeholders(pack[key])].sort(), [...placeholders(mod.en[key])].sort(),
+        `${lang}.${key} must keep the placeholders of the en baseline`)
+    }
+  }
+})
+
+test('every locale pack has a plugin-list entry in locale/', () => {
+  const names = localePackNames()
+  assert.ok(names.length > 0, 'this package ships at least one language pack')
+  for (const lang of names) {
+    const meta = JSON.parse(readFileSync(new URL(`../locale/${lang}.json`, import.meta.url), 'utf8'))
+    assert.equal(typeof meta.meta?.title, 'string', `${lang} needs a plugin-list title`)
+    assert.ok(meta.meta.title.length > 0, `${lang} title is empty`)
+    assert.equal(typeof meta.meta?.description, 'string', `${lang} needs a plugin-list description`)
+    assert.ok(meta.meta.description.length > 0, `${lang} description is empty`)
+  }
+})
+
+test('a language pack is registered only for a language the shell already ships', async () => {
+  const { mod } = loadBundle()
+  const registered = []
+  const ctx = {
+    locale: {
+      // 0.2.2 起壳子自带 ja / es / fr / de / ru / pt；这里只给最小的三门口径。
+      getSnapshot: () => ({ locales: [{ id: 'zh' }, { id: 'en' }, { id: 'ja' }] }),
+      register: (ns, lang, dictionary) => {
+        registered.push({ ns, lang, dictionary })
+        return () => {}
+      },
+    },
+  }
+  const asked = []
+  await withFetch(async (url) => {
+    asked.push(String(url))
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ja: { 'item.label': 'x' },
+        es: { 'item.label': 'y' },
+        zh: { 'item.label': 'z' },
+      }),
+    }
+  }, () => mod.internals.loadLocalePacks(ctx, [], () => false))
+  assert.deepEqual(asked, ['/dsh-local-search/api/locales'])
+  // 壳子没有 es：包被忽略；zh 是基线：不重复注册。没有 `addLanguage`，语言选择器不会被塞新条目。
+  assert.deepEqual(registered.map((entry) => entry.lang), ['ja'])
+  assert.equal(registered[0].ns, mod.NS)
+  assert.deepEqual(registered[0].dictionary, { 'item.label': 'x' })
+
+  // 壳子没有 getSnapshot 时，连请求都不发。
+  let fetched = 0
+  await withFetch(async () => {
+    fetched += 1
+    return { ok: true, status: 200, json: async () => ({}) }
+  }, () => mod.internals.loadLocalePacks({ locale: {} }, [], () => false))
+  assert.equal(fetched, 0)
 })
 
 test('the page asks the Host routes this package registers', () => {
   const { mod } = loadBundle()
   assert.equal(mod.STATUS_ROUTE, STATUS_ROUTE)
   assert.equal(mod.DESCRIBE_ROUTE, DESCRIBE_ROUTE)
+  assert.equal(mod.DIAGNOSE_ROUTE, DIAGNOSE_ROUTE)
   assert.equal(mod.DRAFT_PARAM, DRAFT_PARAM)
 })
 
@@ -1195,14 +1464,415 @@ test('a saved code page lands on the right segment instead of being rewritten', 
   assert.equal(mod.internals.choiceValue(field, ''), 'gbk')
 })
 
-test('the engine notice renders only where primitives provide Toast', () => {
-  const withToast = loadBundle({ toast: true })
-  const withoutToast = loadBundle()
-  const engines = ['anytxt']
-  const rendered = withToast.mod.internals.EngineNotice({ t: (key) => key, engines, onDone: () => {} })
-  assert.equal(rendered.type, withToast.stubs['@deepseek-ai/dsh-client-ui-primitives'].Toast)
-  // 本包不发布 CSS：没有 Toast 的部署宁可不提示，也不自己画一个内联样式的浮层。
-  assert.equal(withoutToast.mod.internals.EngineNotice({ t: (key) => key, engines, onDone: () => {} }), null)
+test('the engine card names each failed backend and its own fix', () => {
+  const { mod } = loadBundle()
+  const card = mod.EngineCard({
+    t: (key) => key,
+    failures: [
+      { engine: 'everything', detail: 'not-installed', code: 'EVERYTHING_ES_NOT_FOUND' },
+      { engine: 'anytxt', detail: 'not-running', code: 'ANYTXT_DOWN' },
+    ],
+    onClose: () => {},
+  })
+  // 自绘的右下角卡：`role="status"` 让读屏知道它出现了，但不抢焦点。
+  assert.equal(card.type, 'div')
+  assert.equal(card.props.role, 'status')
+  const text = flatText(card)
+  assert.match(text, /notice\.title/)
+  // 一行一个失败后端，修法挂在同一行下面，两处都不重复引擎名。
+  assert.match(text, /status\.everything\.down/)
+  assert.match(text, /fix\.everything\.notInstalled/)
+  assert.match(text, /status\.anytxt\.down/)
+  // Anytxt 关掉 GUI 时最常见的原因就是没在运行：先让人启动，而不是先推下载页。
+  assert.match(text, /fix\.anytxt\.notRunning/)
+  const hrefs = collectElements(card, (node) => node.type === 'a').map((node) => node.props.href)
+  assert.ok(hrefs.some((href) => href.includes('voidtools.com')), 'Everything links to its download page')
+  assert.ok(!hrefs.some((href) => href.includes('anytxt.net')), 'a not-running Anytxt is not a download problem')
+
+  // Everything 的修法按 `detail` 选：没启动只给「启动它」，没装 / 缺 es.exe 给下载页。
+  const guidance = (failure) => mod.internals.cardGuidance((key) => key, failure)
+  assert.deepEqual(guidance({ engine: 'everything', detail: 'not-running' }),
+    { key: 'everything', text: 'fix.everything.notRunning' })
+  assert.equal(guidance({ engine: 'everything', detail: 'not-installed' }).text, 'fix.everything.notInstalled')
+  assert.match(guidance({ engine: 'everything', detail: 'not-installed' }).href, /voidtools\.com/)
+  assert.equal(guidance({ engine: 'everything', detail: 'es-missing' }).text, 'fix.everything.esMissing')
+  assert.match(guidance({ engine: 'everything', detail: 'es-missing' }).href, /voidtools\.com/)
+  // 不认识的 detail 退回那句通用的下载指引，不留空行。
+  assert.equal(guidance({ engine: 'everything', detail: 'unknown' }).text, 'fix.download.everything')
+  assert.match(guidance({ engine: 'everything', detail: 'unknown' }).href, /voidtools\.com/)
+  // Anytxt 按 `detail` 选：没在运行只给「启动它」（不推下载页），判断不了时给「确认 / 点击安装」。
+  const down = guidance({ engine: 'anytxt', detail: 'not-running' })
+  assert.equal(down.key, 'anytxt')
+  assert.equal(down.text, 'fix.anytxt.notRunning')
+  assert.equal(down.href, undefined)
+  const unknown = guidance({ engine: 'anytxt', detail: 'unknown' })
+  assert.equal(unknown.text, 'fix.anytxt.unknown')
+  assert.equal(unknown.href, undefined)
+  assert.deepEqual(unknown.link, { text: 'fix.anytxt.install', href: unknown.link.href })
+  assert.match(unknown.link.href, /anytxt\.net/)
+
+  // 只有「点击安装」那一段是链接：整句可点会把「确认是否在运行」也变成下载入口。
+  const link = mod.internals.fixContent(unknown)
+  assert.deepEqual(link[0], 'fix.anytxt.unknown')
+  assert.equal(link[1].type, 'a')
+  assert.equal(link[1].children[0], 'fix.anytxt.install')
+  assert.match(link[1].props.href, /anytxt\.net/)
+})
+
+test('closing the card takes one press and removes it for this page', () => {
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  let closed = 0
+  const props = {
+    t: (key) => key,
+    failures: [{ engine: 'anytxt', detail: 'not-running' }],
+    onClose: () => { closed += 1 },
+  }
+  const render = () => {
+    hooks.begin()
+    const tree = mod.EngineCard(props)
+    hooks.end()
+    return tree
+  }
+  const card = render()
+  const button = findElement(card, (node) => node.props?.['aria-label'] === 'notice.close')
+  assert.ok(button !== undefined, 'the close control needs a name for screen readers')
+  // 有 primitives 就用它的 `Button`：颜色、焦点环、主题都跟壳子走。
+  assert.equal(button.type, stubs['@deepseek-ai/dsh-client-ui-primitives'].Button)
+  button.props.onClick()
+  assert.equal(closed, 1, 'one press closes once')
+  assert.equal(render(), null, 'the card is gone for this page')
+})
+
+test('without primitives the card still shows, with a native close button', () => {
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (message) => { warnings.push(String(message)) }
+  let mod
+  try {
+    ({ mod } = loadBundle({ primitivesModule: false }))
+  } finally {
+    console.warn = originalWarn
+  }
+  let closed = 0
+  const card = mod.EngineCard({ t: (key) => key, failures: [{ engine: 'anytxt' }], onClose: () => { closed += 1 } })
+  // 这张卡本来就是「壳子缺东西」时才最需要出现：控件缺了也画得出来。
+  assert.equal(card.type, 'div')
+  assert.equal(card.props.role, 'status')
+  assert.match(flatText(card), /status\.anytxt\.down/)
+  const button = findElement(card, (node) => node.props?.['aria-label'] === 'notice.close')
+  assert.equal(button.type, 'button')
+  assert.equal(button.props.type, 'button')
+  button.props.onClick()
+  assert.equal(closed, 1)
+  assert.equal(warnings.length, 1)
+})
+
+test('a failing startup check mounts the card in the shell overlay, and only the user closes it', async (t) => {
+  // 启动检查的节奏（1.5s 轮询）靠假时钟推进，测试不该真的等。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  const { ctx, registered, disposeAll } = fakeContext()
+  // 跨会话的「别再提醒」是配置里那个开关，不是浏览器会话存储：卡连读一次 sessionStorage 都不该读。
+  let storageTouched = false
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    get() {
+      storageTouched = true
+      throw new Error('the card must not remember anything in sessionStorage')
+    },
+  })
+  const asked = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    asked.push(target)
+    if (target.includes('/describe')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => describeConfig({
+          health: { pending: false, failures: [{ engine: 'anytxt', detail: 'not-running', code: 'ANYTXT_DOWN' }] },
+        }),
+      }
+    }
+    // 卡挂上之后不该再问这里：真问了说明又把「自动重探 / 自动撤卡」加回来了。
+    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+  }
+  try {
+    // 0.4 不再用 `Toast`：壳子里没有它，卡照样要出来（`loadBundle` 根本没提供这个 primitive）。
+    assert.equal(stubs['@deepseek-ai/dsh-client-ui-primitives'].Toast, undefined)
+    mod.apply(ctx)
+    // 启动检查在 Host 侧异步跑：页面先等 1.5s 那一次 describe。
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+
+    const overlays = registered('shell.overlay')
+    assert.equal(overlays.length, 1, 'the failed check must mount exactly one card')
+    assert.equal(overlays[0].options.locale, mod.NS)
+    const element = overlays[0].component()
+    assert.equal(element.type, mod.EngineCard, 'the overlay holds this package\'s card, not a toast')
+    const renderCard = () => {
+      hooks.begin()
+      const tree = element.type(element.props)
+      hooks.end()
+      return tree
+    }
+    const card = renderCard()
+    assert.equal(card.props.role, 'status')
+    assert.match(flatText(card), /status\.anytxt\.down/)
+    assert.match(flatText(card), /fix\.anytxt\.notRunning/)
+
+    // 不自动重探、不自动撤卡：时间过去多久都只有启动检查那一次 describe。
+    t.mock.timers.tick(300000)
+    await settleMicrotasks()
+    assert.equal(asked.filter((target) => String(target).includes('/api/status')).length, 0,
+      'the card must not re-probe the engines')
+    assert.equal(overlays[0].disposed, false, 'the card stays until the user closes it')
+
+    // 用户点关闭：卡撤掉，不写任何会话记忆。
+    const closeButton = findElement(renderCard(), (node) => node.props?.['aria-label'] === 'notice.close')
+    assert.ok(closeButton !== undefined, 'the card needs a way out')
+    closeButton.props.onClick()
+    await settleMicrotasks()
+    assert.equal(overlays[0].disposed, true, 'closing the card removes it for this page')
+    assert.equal(storageTouched, false, 'the card must not leak into sessionStorage')
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
+    delete globalThis.sessionStorage
+    t.mock.timers.reset()
+  }
+})
+
+test('a clean or disabled startup check mounts no card at all', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const originalFetch = globalThis.fetch
+  /** 挂一次页面，推进 1.5s，回它往 `shell.overlay` 里注册了什么。 */
+  const overlaysAfter = async (health) => {
+    const { mod } = loadBundle()
+    const context = fakeContext()
+    globalThis.fetch = async (url) => {
+      const target = String(url)
+      if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ health }) }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    mod.apply(context.ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    const overlays = context.registered('shell.overlay')
+    context.disposeAll()
+    return overlays
+  }
+  try {
+    // 没有失败：一句「一切正常」都不出。
+    assert.deepEqual(await overlaysAfter({ pending: false, failures: [] }), [])
+    // 开关关掉：Host 不探也不报，页面也不出卡。
+    assert.deepEqual(await overlaysAfter({
+      pending: false,
+      disabled: true,
+      failures: [{ engine: 'anytxt', detail: 'not-running', code: 'ANYTXT_DOWN' }],
+    }), [])
+  } finally {
+    globalThis.fetch = originalFetch
+    t.mock.timers.reset()
+  }
+})
+
+test('the diagnose button fetches the Host text and opens a copy dialog', async () => {
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  const text = 'dsh-local-search 0.4.0\ndsh 0.2.1-rc.5\nshell=browser profile=desktop remote=no'
+  const asked = []
+  const written = []
+  await withGlobals({
+    location: { hostname: '127.0.0.1' },
+    __DSH_BOOT__: { release: { version: '0.2.1-rc.5' } },
+    navigator: { clipboard: { writeText: async (value) => { written.push(value) } } },
+  }, () => withFetch(async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    asked.push(target)
+    return { ok: true, status: 200, json: async () => ({ text }) }
+  }, async () => {
+    const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async () => true })
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+    // 本机 Host：不多一句「检索的是另一台机器的盘」。
+    assert.ok(!flatText(page.tree()).includes('remote.note'))
+
+    const diagnoseButton = findElement(page.tree(), (node) => labelOf(node) === 'diagnose.copy'
+      && node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Button)
+    assert.ok(diagnoseButton !== undefined, 'the page needs a copy-diagnostics button')
+    assert.equal(diagnoseButton.props.variant, 'outline')
+    diagnoseButton.props.onClick()
+    await pump(hooks, page.render)
+
+    assert.equal(asked.length, 1)
+    // shell / remote / dsh 只有页面知道，走查询参数交给 Host 当字符串拼进文本。
+    const diagnoseTarget = new URL(asked[0], 'http://localhost')
+    assert.equal(diagnoseTarget.pathname, DIAGNOSE_ROUTE)
+    const params = diagnoseTarget.searchParams
+    assert.equal(params.get('shell'), 'browser')
+    assert.equal(params.get('remote'), 'no', 'a loopback host is not another machine')
+    assert.equal(params.get('dsh'), '0.2.1-rc.5')
+
+    const modal = openModal(page.tree(), stubs)
+    assert.ok(modal !== undefined, 'the text must open in a dialog')
+    assert.equal(modal.props.title, 'diagnose.title')
+    // 可全选的 textarea：只读，值是 Host 那份文本，复制按钮在弹窗页脚。
+    const area = findElement(modal.props.children, (node) => node.type === 'textarea')
+    assert.ok(area !== undefined, 'the dialog must show the text')
+    assert.equal(area.props.readOnly, true)
+    assert.equal(area.props.value, text)
+
+    modalButton(modal, 'diagnose.copyAction').props.onClick()
+    await pump(hooks, page.render)
+    assert.deepEqual(written, [text], 'the copy button writes the text to the clipboard')
+    const copied = openModal(page.tree(), stubs)
+    assert.ok(modalButton(copied, 'diagnose.copied') !== undefined, 'the button says it was copied')
+    // 文本还在，用户随时能再复制一次。
+    assert.equal(findElement(copied.props.children, (node) => node.type === 'textarea').props.value, text)
+  }))
+})
+
+test('a refused clipboard says so instead of failing silently, and a remote host is called out', async () => {
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  const asked = []
+  await withGlobals({
+    location: { hostname: '192.168.1.20' },
+    navigator: { clipboard: { writeText: async () => { throw new Error('NotAllowedError') } } },
+  }, () => withFetch(async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    asked.push(target)
+    return { ok: true, status: 200, json: async () => ({ text: 'diagnostics' }) }
+  }, async () => {
+    const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async () => true })
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+    // 页面连的是另一台机器上的 Host：不说一句，用户会以为搜的是自己这台。
+    assert.match(flatText(page.tree()), /remote\.note/)
+
+    findElement(page.tree(), (node) => labelOf(node) === 'diagnose.copy'
+      && node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Button).props.onClick()
+    await pump(hooks, page.render)
+
+    const params = new URL(asked[0], 'http://localhost').searchParams
+    assert.equal(params.get('remote'), 'yes')
+    // 没有 `window.__DSH_BOOT__` 时整段省略，不写 unknown= 占位。
+    assert.equal(params.get('dsh'), null)
+
+    const modal = openModal(page.tree(), stubs)
+    modalButton(modal, 'diagnose.copyAction').props.onClick()
+    await pump(hooks, page.render)
+
+    const refused = openModal(page.tree(), stubs)
+    // 被拒时不能只弹一句失败：文本还留在可选中的 textarea 里，另外说清怎么手动复制。
+    assert.match(flatText(refused.props.children), /diagnose\.copyFailed/)
+    assert.equal(findElement(refused.props.children, (node) => node.type === 'textarea').props.value, 'diagnostics')
+    assert.ok(modalButton(refused, 'diagnose.copied') === undefined, 'a refused copy must not claim success')
+  }))
+})
+
+test('the desktop shell is not a remote Host', async () => {
+  // 回归：桌面壳用 `dsh-app://app` 供页面，hostname 是 `app`；当成「另一台机器」会在页面上
+  // 多出一行「检索的是那台机器的盘」，诊断文本里也会写 remote=yes。
+  const { mod } = loadBundle()
+  await withGlobals({ location: { protocol: 'dsh-app:', hostname: 'app' }, dshDesktop: {} }, () => {
+    assert.equal(mod.internals.shellName(), 'desktop-app')
+    assert.equal(mod.internals.remoteOf(), 'no')
+    const url = mod.internals.diagnoseUrl()
+    assert.match(url, /shell=desktop-app/)
+    assert.match(url, /remote=no/)
+  })
+  // 真的从另一台机器上的 Host 打开时才是 yes。
+  await withGlobals({ location: { protocol: 'http:', hostname: '192.168.1.20' } }, () => {
+    assert.equal(mod.internals.remoteOf(), 'yes')
+  })
+})
+
+test('the startup check is described as a flag field and saved as a boolean', async () => {
+  const startup = describeConfig().sections.find((section) => section.id === 'startup')
+  assert.deepEqual(startup.fields.map((field) => [field.path.join('.'), field.type, field.labelKey]),
+    [['checkEnginesOnStart', 'flag', 'field.checkEnginesOnStart.label']])
+
+  const hooks = liveHooks()
+  const { mod, stubs } = loadBundle({ hooks: hooks.react })
+  let ops
+  await withFetch(async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+  }, async () => {
+    const page = mountPage(mod, hooks, {
+      state: { value: { checkEnginesOnStart: true }, user: {}, writable: true },
+      mutate: async (next) => { ops = next; return true },
+    })
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+
+    // 桩不会展开函数组件，所以按标识找到宿主节点，再像 React 那样把它展开成 Switch。
+    const host = findElement(page.tree(), (node) => node.type === mod.FlagField)
+    assert.ok(host !== undefined, 'the startup section must render the flag field')
+    assert.equal(host.props.value, true, 'the saved value decides the initial state')
+    const expanded = mod.FlagField(host.props)
+    const toggle = findElement(expanded, (node) => node.type === stubs['@deepseek-ai/dsh-client-ui-primitives'].Switch)
+    assert.ok(toggle !== undefined, 'a deployment with Switch renders the flag with it')
+    assert.equal(toggle.props.id, 'plugin-config-local-search-checkEnginesOnStart')
+    assert.equal(toggle.props.label, 'field.checkEnginesOnStart.label')
+    assert.equal(toggle.props.checked, true)
+    assert.equal(typeof toggle.props.onChange, 'function')
+
+    // 改它 = 一条 `set`，值是布尔——不是 "true"、也不是 1。
+    toggle.props.onChange(false)
+    await pump(hooks, page.render)
+    page.tree().props.onSave()
+    await pump(hooks, page.render)
+    assert.deepEqual(ops, [{ op: 'set', path: ['checkEnginesOnStart'], value: false }])
+
+    // 反方向一样：再打开一次，落盘的仍是布尔。
+    toggle.props.onChange(true)
+    await pump(hooks, page.render)
+    page.tree().props.onSave()
+    await pump(hooks, page.render)
+    assert.deepEqual(ops, [{ op: 'set', path: ['checkEnginesOnStart'], value: true }])
+  })
+})
+
+test('a deployment without Switch falls back to a native checkbox for the flag field', async () => {
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react, omit: 'Switch' })
+  let ops
+  await withFetch(async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
+    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+  }, async () => {
+    const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+
+    const host = findElement(page.tree(), (node) => node.type === mod.FlagField)
+    assert.ok(host !== undefined, 'the flag must not disappear when the switch primitive is missing')
+    const expanded = mod.FlagField(host.props)
+    const box = findElement(expanded, (node) => node.type === 'input' && node.props?.type === 'checkbox')
+    assert.ok(box !== undefined, 'the fallback is a native checkbox, not nothing')
+    assert.equal(box.props.id, 'plugin-config-local-search-checkEnginesOnStart')
+    assert.equal(box.props.checked, false)
+    // 没有 `<label for>` 时可访问名只能挂在 aria-label 上，否则这个开关对读屏是无名控件。
+    assert.equal(box.props['aria-label'], 'field.checkEnginesOnStart.label')
+    // 原生控件的事件形状：`event.target.checked`，页面据此写成布尔。
+    box.props.onChange({ target: { checked: true } })
+    await pump(hooks, page.render)
+
+    page.tree().props.onSave()
+    await pump(hooks, page.render)
+    assert.deepEqual(ops, [{ op: 'set', path: ['checkEnginesOnStart'], value: true }])
+    assert.equal(typeof ops[0].value, 'boolean')
+  })
 })
 
 test('the package icon is wired through the manifest and stays multi-colour', () => {
