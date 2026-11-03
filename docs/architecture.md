@@ -15,16 +15,27 @@ Agent
 
 `lib/engines.js` is the provider registry:
 
-- files engine: `{ name, search(args), status(args) }`
-- content engine: `{ name, search(args), fragments(args), read(args), status(args) }`
+- files engine: `{ name, search(args), probe(args) }`
+- content engine: `{ name, search(args), fragments(args), read(args), probe(args) }`
 
 `auto` (or an omitted `engine`) resolves the backend configured for that capability — `files.backend` / `content.backend` — so the default is a setting rather than the registry order; an explicit value still resolves by registry name. Tool names and `engine` values stay stable when a backend is added; the registry and the backend module change. Content items carry `engine` plus a self-describing `ref` (`<engine>:<id>`) so `local_search_read`/`local_search_fragments` cannot silently resolve a ref against the wrong backend.
 
-Status is the one remaining v1-specific surface: it probes the registered engines but renders the familiar Everything/Anytxt labels. A third engine should add its display label/formatter (or a generic status array) before claiming the whole surface is registry-only.
+## Two outputs, one probe
+
+Every backend answers one question about itself through `probe(args)`: `{ state: 'ready', version?, path? }`, `{ state: 'ready', url }`, or `{ state, detail, code, message }` where `state` is one of `missing-tool`, `missing-index`, `down`. `missing-index` exists for backends whose tool is present but whose index is not (a future `updatedb`/Recoll adapter); neither Windows backend can tell that apart today, so neither reports it.
+
+`lib/probe.js` only aggregates — it no longer knows any engine — and normalises each answer into the two outputs the plugin keeps apart:
+
+- **Model-facing output**: `ok`, `code`, `message`, plus the version and the path/URL of the engine it is actually talking to. `local_search_status` renders exactly that (`formatStatus`) and nothing else. No fix, no hint, no plugin/DSH version, no platform, no four-state name.
+- **User-facing output**: the four states, the page's fix line (`detail`), versions, roots, probe time. The configuration card, `GET /dsh-local-search/api/status`, `GET /dsh-local-search/api/diagnose` and `docs/troubleshooting.md` are the only places that explain *why*.
+
+The split is load-bearing: a model holding `pwsh`, `grep` and `glob` will turn "install `es.exe`" or "start the service" into an environment repair, while the correct move is to fall back to `grep`/`glob` and say the local index is unavailable. Two gates keep it that way: `probeEngines` hands the model-facing shape only when the caller does not pass `detail: true`, and `test/format.test.js` pins that a status object carrying `state` / `detail` / `hint` renders byte-identically.
 
 ## Boundaries
 
 - **Read-only toward the model**: no write, delete, index-sync, OCR, export, or settings tool is registered. The package's only writes are settings edits the Host validates and persists: the page's own saves, the 0.2 key migration, and the first-run autoconfiguration.
+- Four read-only HTTP routes (`status`, `describe`, `diagnose`, `locales`) answer the page; none of them writes, spawns a path a request names, or serves CORS headers.
+- `GET /api/diagnose` is the one human-facing surface that carries machine identity: plugin/DSH versions, `profile`, `shell`, `remote`, OS, node, roots plus the default scope, the configured paths, endpoint, limits and backends, each engine's state with the address it tried, the first-run outcome (including a write error), and probe time. It redacts `os.homedir()` and `DSH_HOME` to `~` before the text leaves the Host; anything else is shown as written, because pasting it into an issue is the user's decision.
 - `es.exe` is spawned with a fixed argv and the model text after `--`; state-changing switches are unreachable.
 - Anytxt is called only through `Search`, `GetResult`, `GetFragmentAll`, and `GetRawTextByFID`.
 - Network access is limited to the configured local Anytxt endpoint.
@@ -71,12 +82,50 @@ crystal. The package's own `icon.svg` (a multi-colour gradient, wired through
 Installed plugins, the npm page, and the README show. A deployment that needs its
 own artwork on that card would have to contribute a sidebar panel instead.
 
-The form is two capability sections followed by two plain ones. **File names** and
+The form is two capability sections followed by three plain ones. **File names** and
 **File contents** each open with a backend selector and show only the selected
-backend's fields; **Search scopes** and **Limits** are the same whichever backend
-runs, so they close the page. The Test button sits at the foot of the grid in the
-section that owns the field marked `probeEndpoint`, which keeps it beside the
-address it probes instead of letting it drift down the page.
+backend's fields; **Search scopes**, **Limits** and **Startup** are the same
+whichever backend runs, so they close the page. The Test button sits at the foot of
+the grid in the section that owns the field marked `probeEndpoint`, which keeps it
+beside the address it probes instead of letting it drift down the page.
+
+`describe` also carries `platform: { os, pathStyle }`. The page uses it to decide
+how it rewrites a path draft: drive letters and backslashes are normalised only on
+Windows, so a `/home/me` typed into a profile that later moves to another machine
+is not silently turned into `\home\me`. `~` is not expanded on the page: the Host
+expands it for validation and for use, and a save writes back the Host's resolved
+path, so a stored profile carries an absolute path. A hand-written `~/x` in the
+profile keeps working because it is expanded where it is used. `test/client.test.js` compares the page's rewriting with the Host's
+implementation across both path styles.
+
+The page's third plain section is a single `Switch`-backed flag,
+`checkEnginesOnStart`. It controls the **startup health check**, not the first-run
+configuration: with it on, `lib/index.js` probes once after `apply` (whether or not
+`autoConfigured` is already set) and publishes the result as `describe.health`
+(`{ pending, failures, checkedAt, disabled }`) without writing any config. Off means
+no probe, no card, and `health.disabled: true`; the manual Test button and the
+first-run pass are unaffected. Failures carry `{ engine, state, detail, code }`,
+which is what the card needs to pick its fix line.
+
+The plugin's own copy ships in two layers. `zh`/`en` stay in `lib/client.js` as a
+synchronous baseline: `apply` cannot await a request, or a slow route would hold
+the tools registration hostage, and the first frame (card title, loading line) must
+not flash the wrong language. Every other language is a `lib/locales/<lang>.json`
+pack of values only, served by `GET /api/locales` and registered only for
+languages the shell already knows (`ctx.locale.getSnapshot().locales`). There is no
+`addLanguage`: inventing a language would put an entry in the shell's picker whose
+only translated surface is this card. `locale/<lang>.json` (title and description
+for the plugin list) is a separate, optional layer.
+
+Two more page surfaces belong to 0.4. A **Copy diagnostics** button under the
+description opens a `Modal` with the `GET /api/diagnose` text in a selectable
+`<textarea>` and a copy control; a refused clipboard falls back to manual select,
+never to a single "copy failed" line. And when the startup check found a failure,
+a card in `shell.overlay` (bottom-right, theme tokens only, `role="status"`) lists
+each failed engine with its fix. The card does not poll and does not remove
+itself — the user closes it, and it is gone for this page; closing lives in
+component state only, so the way to stop being told across sessions is the
+`checkEnginesOnStart` switch, not a second, session-scoped memory.
 
 The field grid seats two columns from 656px up and one below, with the grid capped
 at 1100px: two columns at full width are 2×542, the same as before, and a ~700px
@@ -107,10 +156,14 @@ These constraints hold the page together:
   `GET /dsh-local-search/api/describe` answers with the sections, each capability's
   registered backends, every field's path, type and hard cap, and the reset recipe;
   `lib/client.js` turns the returned keys into zh/en copy and renders them. The
-  topology is schema fact — `lib/schema.js` and `lib/describe.js` already know the
-  path, the type and the cap — while the sentences are UI text that has to ship in
-  the browser half. A backend without a `labelKey` simply renders its registry
-  name, so only a product with a curated name needs one.
+  topology is schema fact — `lib/fields.js` holds the path, the type and the cap, and
+  both `lib/schema.js` and `lib/describe.js` read that one table — while the sentences are
+  UI text that has to ship in
+  the browser half. Keys are dotted (`field.esPath.label`, `section.files`,
+  `dialog.reset.title`) and derived from the field's own path, so a language pack is
+  a flat `{ key: value }` tree whose key set is exactly the baseline's. A backend
+  without a `labelKey` simply renders its registry name, so only a product with a
+  curated name needs one.
 - **`timeoutMs` stays out.** `defineTool` fixes each deadline at registration,
   so a page edit could not take effect without reloading the row; it remains a
   profile-YAML setting.
@@ -131,18 +184,20 @@ These constraints hold the page together:
   the list because those are paths the user typed. It sits just under the
   description and asks in a dialog before writing.
 - **Confirmations and results are dialogs.** Reset, a save the pre-save check
-  refused, and the Test connection result all use the primitives' `Modal`: it
-  portals itself to `document.body`, so the page still ships no CSS, and the
-  shell's own layer supplies Escape, the Tab trap, and returning focus on close.
-  `Modal` is optional the way `Toast` is — a deployment whose primitives predate it
+  refused, the Test connection result and the diagnostics text all use the
+  primitives' `Modal`: it portals itself to `document.body`, so the page still ships
+  no CSS, and the shell's own layer supplies Escape, the Tab trap, and returning
+  focus on close. `Modal` is optional — a deployment whose primitives predate it
   keeps the in-page line and the two-press Reset, because there is no stylesheet
   here to draw a substitute layer.
 - **No CSS of its own.** The form is built from
   `@deepseek-ai/dsh-client-ui-primitives` (`SettingsForm`,
-  `SettingsValueField`, `SegmentedControl`, `Button`) and theme tokens, so
-  a UI skin restyles it for free. `Toast` and `Modal` are optional: a deployment
-  whose primitives lacks them gets no engine notice and no dialog, because the
-  package ships no stylesheet for a hand-rolled overlay.
+  `SettingsValueField`, `SegmentedControl`, `Button`, `Switch`) and theme tokens, so
+  a UI skin restyles it for free. `Toast` and `Modal` are optional; the engine card
+  draws its own `div` because `Toast` is top-centre, auto-dismissing and
+  `pointer-events: none`, which cannot hold a close button or wait for a repair. The
+  card's colours are still only `--dsw-*` tokens, and a deployment without
+  primitives gets a native `button` inside it rather than no card at all.
 - **The client manifest names services, not the primitives module.**
   `dsh.client.inject` lists `@deepseek-ai/dsh-client-locale`, `-ui-slots` and
   `-ui-plugin-manager`; `@deepseek-ai/dsh-client-ui-primitives` is absent because the
@@ -156,29 +211,33 @@ These constraints hold the page together:
   when the page stops borrowing components. The half itself declares
   `exports.inject = ['slots', 'locale']`, which keeps `apply` unrun until both
   services exist; no in-code guard repeats that.
-- **Two read-only routes share one guard.** A page cannot POST to the local
+- **Four read-only routes share one guard.** A page cannot POST to the local
   Anytxt JSON-RPC (cross-origin on both sides), and it cannot know which backends
-  the Host registered, so the Host serves `GET /dsh-local-search/api/status` and
-  `GET /dsh-local-search/api/describe` as `exact` routes on the bare `webServer`.
-  Both refuse anything but `GET`/`HEAD`, and both answer a browser-marked
-  cross-site request (`Sec-Fetch-Site`, or an `Origin` that is not this Host) with
-  `CROSS_SITE_REFUSED`: a plain GET still spends an `es.exe` spawn on one route
-  and hands out this machine's backend names on the other. Neither sends CORS
-  headers, so a foreign page cannot read the answer. `lib/probe.js` runs one probe
-  for the status route and `local_search_status`, so the two answers cannot
-  drift. `?anytxtUrl=` carries the address as typed, so testing never needs a
-  save first, and that draft is accepted only as a loopback `http(s)` URL, so the
-  route cannot be used as a request-forwarding proxy. `?esPath=` answers a
-  narrower question — whether that path exists — and never starts the file it
-  names: a route that spawns whatever path it is handed would be an execution
-  interface, not a check. `?dir=` (repeatable, one per `allRoots` entry) answers the
-  same question for the four scope paths, which the schema validates only when a
-  tool call uses them. A path that exists but is the wrong kind answers its own code
+  the Host registered, so the Host serves `GET /dsh-local-search/api/status`,
+  `/api/describe`, `/api/diagnose` and `/api/locales` as `exact` routes on the bare
+  `webServer`. All four refuse anything but `GET`/`HEAD`, and all four answer a
+  browser-marked cross-site request (`Sec-Fetch-Site`, or an `Origin` that is not
+  this Host) with `CROSS_SITE_REFUSED`: a plain GET still spends an `es.exe` spawn on
+  one route, hands out this machine's backend names on another, and would hand out
+  the machine's identity on the third. None sends CORS headers, so a foreign page
+  cannot read the answer. `lib/probe.js` runs one probe for the status route and
+  `local_search_status`, so the two answers cannot drift. `?anytxtUrl=` carries the
+  address as typed, so testing never needs a save first, and that draft is accepted
+  only as a loopback `http(s)` URL, so the route cannot be used as a
+  request-forwarding proxy. `?esPath=` answers a narrower question — whether that
+  path exists — and never starts the file it names: a route that spawns whatever
+  path it is handed would be an execution interface, not a check. `?dir=`
+  (repeatable, one per `allRoots` entry) answers the same question for the four
+  scope paths, which the schema validates only when a tool call uses them. `~` is
+  expanded before the check, so a `~`-rooted draft is answered the way a tool call
+  would resolve it. A path that exists but is the wrong kind answers its own code
   (`DIR_NOT_DIRECTORY` for a file where a directory belongs, `ES_PATH_NOT_FILE` for
   the reverse), because "not found" and "wrong slot" call for different fixes.
-  `?checkOnly=1` answers the draft checks alone and skips the
-  probe, so a field can be checked when focus leaves it without paying for an
-  `es.exe` spawn.
+  `?checkOnly=1` answers the draft checks alone and skips the probe, so a field can
+  be checked when focus leaves it without paying for an `es.exe` spawn.
+  `/api/diagnose` is never cached: a probe is never cached. `/api/locales` answers
+  with a content-hash ETag and `cache-control: no-cache`, so the page revalidates on
+  every load and a 304 costs no body.
 - **A save is verified before it lands.** The page asks the Host about the drafts
   describe marked `probeEndpoint` / `verifyPath` / `verifyDir`, and a failing answer
   holds the write and asks in a dialog, so writing a known-unreachable configuration
@@ -218,12 +277,19 @@ These constraints hold the page together:
   settings layer refuses (a home patch overriding the profile) leaves the flat keys in
   place, which `readConfig` still reads, so the plugin keeps working; either write's
   refusal puts its reason in `autoconfig.error`, which the page prints under the
-  description and the log keeps as a warning. Every shape change is one row in
+  description and the log keeps as a warning. A write the HMR transaction refuses
+  (`HMR transactions cannot be nested`) is not a refusal: a hot-mounted plugin —
+  installed, replaced, or removed while DSH runs — runs `apply` inside that
+  transaction, so the pass stops, leaves `deferred` set, and the next page request
+  re-runs it outside the transaction (an HTTP handler is not inside it). `describe`
+  awaits that retry, so the page reports the settled result instead of an empty form.
+  A plugin loaded by a cold start writes in the first pass and never defers.
+  Every shape change is one row in
   `RETIRED_PATHS`, and all three consumers (read fallback, the hidden schema keys,
   the startup migration) share that list, so a profile may skip any number of
   versions: see `docs/config-migration.md`.
-  A probe that finds an engine down reports it in the payload's
-  `autoconfig` block, and the page shows one `Toast` per browser session.
+  Engine failures are not part of that pass — `describe.health` (the startup check)
+  owns them, and the card in `shell.overlay` is the only thing that draws them.
 
 A failing probe names the official download page for the engine that is
 missing. That is the whole installation story: `es.exe` and Anytxt are separate

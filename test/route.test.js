@@ -1,8 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { homedir } from 'node:os'
 import {
-  CHECK_ONLY_PARAM, DESCRIBE_ROUTE, DRAFT_DIR_PARAM, DRAFT_PARAM, DRAFT_PATH_PARAM, STATUS_ROUTE, describeHandler,
-  draftDirs, draftEndpoint, draftEsPath, registerDescribeRoute, registerStatusRoute, statusHandler,
+  CHECK_ONLY_PARAM, DESCRIBE_ROUTE, DIAGNOSE_ROUTE, DRAFT_DIR_PARAM, DRAFT_PARAM, DRAFT_PATH_PARAM, LOCALES_ROUTE,
+  STATUS_ROUTE, describeHandler, diagnoseHandler, draftDirs, draftEndpoint, draftEsPath, localesHandler,
+  registerDescribeRoute, registerDiagnoseRoute, registerLocalesRoute, registerStatusRoute, statusHandler,
 } from '../lib/route.js'
 import { describeConfig } from '../lib/describe.js'
 
@@ -205,15 +207,29 @@ test('describe answers the backend list the page renders from', async () => {
   assert.equal(response.calls[0].status, 200)
   assert.equal(response.calls[0].headers['cache-control'], 'no-store')
   const body = lastBody(response)
-  assert.deepEqual(body.sections.map((section) => section.id), ['files', 'content', 'scopes', 'limits'])
+  assert.deepEqual(body.sections.map((section) => section.id), ['files', 'content', 'scopes', 'limits', 'startup'])
   assert.equal(body.autoconfig, undefined)
 })
 
 test('describe carries the first-run state when the Host has it', async () => {
   const response = fakeResponse()
   const autoconfig = { pending: false, ran: true, failures: [{ engine: 'anytxt', code: 'ANYTXT_DOWN' }] }
-  await describeHandler({ method: 'GET', url: DESCRIBE_ROUTE }, response, () => describeConfig(autoconfig))
+  await describeHandler({ method: 'GET', url: DESCRIBE_ROUTE }, response, () => describeConfig({ autoconfig }))
   assert.deepEqual(lastBody(response).autoconfig, autoconfig)
+})
+
+test('describe waits for an asynchronous payload so a deferred write lands first', async () => {
+  const response = fakeResponse()
+  const order = []
+  await describeHandler({ method: 'GET', url: DESCRIBE_ROUTE }, response, async () => {
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
+    order.push('payload')
+    return describeConfig({ autoconfig: { pending: false, ran: true, deferred: false } })
+  })
+  order.push('sent')
+  assert.deepEqual(order, ['payload', 'sent'])
+  assert.equal(lastBody(response).autoconfig.deferred, false)
+  assert.equal(response.calls[0].status, 200)
 })
 
 test('describe refuses another site and any method but GET/HEAD', async () => {
@@ -424,4 +440,183 @@ test('checkOnly answers the drafts without spending an es.exe spawn', async () =
   assert.equal(body.ok, true)
   assert.equal(body.drafts.dirs.length, 1)
   assert.equal(body.everything, undefined)
+})
+
+test('a ~-rooted draft directory is expanded before it is checked', () => {
+  // 家目录是从真机读的，别在测试里写死一个用户名；`~` 能过就说明展开发生在存在性校验之前。
+  const accepted = draftDirs(`/dsh-local-search/api/status?${DRAFT_DIR_PARAM}=${encodeURIComponent('~')}`)
+  assert.equal(accepted.ok, true)
+  assert.deepEqual(accepted.value, [homedir()])
+  assert.equal(accepted.resolved.length, 1)
+  assert.equal(typeof accepted.resolved[0], 'string')
+})
+
+const LANGUAGE_PACKS = {
+  ja: { 'section.files': 'ファイル' },
+  en: { 'section.files': 'Files' },
+}
+
+test('diagnose hands the page query to the payload builder', async () => {
+  const response = fakeResponse()
+  let received
+  await diagnoseHandler(
+    { method: 'GET', url: `${DIAGNOSE_ROUTE}?shell=desktop-app&remote=no&dsh=0.2.1-rc.5` },
+    response,
+    async (query) => {
+      received = query
+      return { text: `shell=${query.get('shell')} remote=${query.get('remote')} dsh=${query.get('dsh')}` }
+    },
+  )
+  assert.ok(received instanceof URLSearchParams)
+  assert.equal(response.calls[0].status, 200)
+  assert.equal(response.calls[0].headers['cache-control'], 'no-store')
+  assert.deepEqual(lastBody(response), {
+    text: 'shell=desktop-app remote=no dsh=0.2.1-rc.5',
+  })
+})
+
+test('diagnose answers HEAD without building the text', async () => {
+  const response = fakeResponse()
+  await diagnoseHandler({ method: 'HEAD', url: DIAGNOSE_ROUTE }, response, () => {
+    throw new Error('HEAD must not build the payload')
+  })
+  assert.equal(response.calls[0].status, 200)
+  assert.equal(response.calls.at(-1).body, undefined)
+})
+
+test('diagnose refuses another site and any method but GET/HEAD', async () => {
+  const crossSite = fakeResponse()
+  await diagnoseHandler(
+    { method: 'GET', url: DIAGNOSE_ROUTE, headers: { 'sec-fetch-site': 'cross-site' } },
+    crossSite,
+    () => {
+      throw new Error('the payload must not be built')
+    },
+  )
+  assert.equal(crossSite.calls[0].status, 403)
+  assert.equal(lastBody(crossSite).code, 'CROSS_SITE_REFUSED')
+
+  const post = fakeResponse()
+  await diagnoseHandler({ method: 'POST', url: DIAGNOSE_ROUTE }, post, () => ({}))
+  assert.equal(post.calls[0].status, 405)
+  assert.equal(post.calls[0].headers.allow, 'GET, HEAD')
+})
+
+test('a diagnose build that throws answers 500 instead of crashing the route', async () => {
+  const response = fakeResponse()
+  await diagnoseHandler({ method: 'GET', url: DIAGNOSE_ROUTE }, response, () => {
+    throw new Error('probe exploded')
+  })
+  assert.equal(response.calls[0].status, 500)
+  const body = lastBody(response)
+  assert.equal(body.ok, false)
+  assert.equal(body.code, 'PROBE_FAILED')
+  assert.match(body.message, /probe exploded/)
+})
+
+test('a diagnose answer that cannot be written never rejects the route', async () => {
+  let destroyed = false
+  await diagnoseHandler(
+    { method: 'GET', url: DIAGNOSE_ROUTE },
+    { writeHead() { throw new Error('EPIPE') }, end() {}, destroy() { destroyed = true } },
+    async () => ({ text: '' }),
+  )
+  assert.equal(destroyed, true)
+})
+
+test('locales answers every pack with a content ETag', async () => {
+  const response = fakeResponse()
+  await localesHandler({ method: 'GET', url: LOCALES_ROUTE }, response, () => LANGUAGE_PACKS)
+  assert.equal(response.calls[0].status, 200)
+  // `no-cache` 而不是 `no-store`：允许存、每次回验，ETag 才有机会命中 304。
+  assert.equal(response.calls[0].headers['cache-control'], 'no-cache')
+  assert.match(response.calls[0].headers.etag, /^"[0-9a-f]{40}"$/)
+  // 语言名排序后组装，与 `read()` 给的插入顺序无关。
+  assert.deepEqual(Object.keys(lastBody(response)), ['en', 'ja'])
+})
+
+test('a matching if-none-match answers 304 with an ETag and no body', async () => {
+  const first = fakeResponse()
+  await localesHandler({ method: 'GET', url: LOCALES_ROUTE }, first, () => LANGUAGE_PACKS)
+  const etag = first.calls[0].headers.etag
+
+  const second = fakeResponse()
+  await localesHandler(
+    { method: 'GET', url: LOCALES_ROUTE, headers: { 'if-none-match': etag } },
+    second,
+    () => LANGUAGE_PACKS,
+  )
+  assert.equal(second.calls[0].status, 304)
+  assert.equal(second.calls[0].headers.etag, etag)
+  assert.equal(second.calls[0].headers['cache-control'], 'no-cache')
+  assert.equal(second.calls.at(-1).kind, 'end')
+  assert.equal(second.calls.at(-1).body, undefined)
+})
+
+test('two answers with the same content carry the same ETag', async () => {
+  const one = fakeResponse()
+  await localesHandler({ method: 'GET', url: LOCALES_ROUTE }, one, () => ({ ja: LANGUAGE_PACKS.ja, en: LANGUAGE_PACKS.en }))
+  const two = fakeResponse()
+  await localesHandler({ method: 'GET', url: LOCALES_ROUTE }, two, () => ({ en: LANGUAGE_PACKS.en, ja: LANGUAGE_PACKS.ja }))
+  assert.equal(one.calls[0].headers.etag, two.calls[0].headers.etag)
+})
+
+test('locales refuses another site and any method but GET/HEAD', async () => {
+  const crossSite = fakeResponse()
+  await localesHandler(
+    { method: 'GET', url: LOCALES_ROUTE, headers: { 'sec-fetch-site': 'cross-site' } },
+    crossSite,
+    () => {
+      throw new Error('the packs must not be read')
+    },
+  )
+  assert.equal(crossSite.calls[0].status, 403)
+  assert.equal(lastBody(crossSite).code, 'CROSS_SITE_REFUSED')
+
+  const post = fakeResponse()
+  await localesHandler({ method: 'POST', url: LOCALES_ROUTE }, post, () => ({}))
+  assert.equal(post.calls[0].status, 405)
+  assert.equal(post.calls[0].headers.allow, 'GET, HEAD')
+})
+
+test('locales answers HEAD without reading the packs', async () => {
+  const response = fakeResponse()
+  await localesHandler({ method: 'HEAD', url: LOCALES_ROUTE }, response, () => {
+    throw new Error('HEAD must not read the packs')
+  })
+  assert.equal(response.calls[0].status, 200)
+  // 缓存指令要与 GET 一致；HEAD 不读盘，所以没有 ETag。
+  assert.equal(response.calls[0].headers['cache-control'], 'no-cache')
+  assert.equal(response.calls.at(-1).body, undefined)
+})
+
+test('a describe payload failure answers 500 with the reason', async () => {
+  const response = fakeResponse()
+  await describeHandler({ method: 'GET', url: DESCRIBE_ROUTE }, response, async () => {
+    throw new Error('settle failed')
+  })
+  assert.equal(response.calls[0].status, 500)
+  assert.equal(lastBody(response).code, 'PROBE_FAILED')
+  assert.match(lastBody(response).message, /settle failed/)
+})
+
+test('the diagnose and locales routes register as exact routes on the declared paths', () => {
+  const registered = []
+  const server = {
+    register(route) {
+      registered.push(route)
+      return () => {}
+    },
+  }
+  const disposeDiagnose = registerDiagnoseRoute(server, async () => ({ text: '' }))
+  const disposeLocales = registerLocalesRoute(server, () => ({}))
+
+  assert.deepEqual(registered.map((route) => [route.kind, route.path]), [
+    ['exact', DIAGNOSE_ROUTE],
+    ['exact', LOCALES_ROUTE],
+  ])
+  assert.equal(typeof registered[0].handler, 'function')
+  assert.equal(typeof registered[1].handler, 'function')
+  assert.equal(typeof disposeDiagnose, 'function')
+  assert.equal(typeof disposeLocales, 'function')
 })
