@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULTS, PATHS, RETIRED_PATHS, foldRetired, pathValue, setPath } from '../lib/config.js'
-import { autoconfigNeeds, autoconfigOps, bootstrap, findDescriptor, migrationOps } from '../lib/bootstrap.js'
+import { autoconfigNeeds, autoconfigOps, bootstrap, createDeferredWrite, deferredWrite, findDescriptor, migrationOps } from '../lib/bootstrap.js'
 
 const NS = 'fishdivinity-local-search'
 
@@ -211,7 +211,8 @@ test('bootstrap migrates first, then writes what the probe found', async () => {
     },
   })
   assert.equal(probes.length, 1)
-  assert.equal(probes[0].detail, true)
+  // 首用这一次不再要「页面用的细节」：坏没坏不在这条链上报。
+  assert.equal(probes[0], undefined)
   assert.equal(settings.calls.length, 2)
   assert.deepEqual(settings.calls[0].ops, [
     { op: 'set', path: PATHS.esPath, value: 'C:/old/es.exe' },
@@ -227,7 +228,7 @@ test('bootstrap migrates first, then writes what the probe found', async () => {
   assert.equal(live.files.everything.esPath, 'C:/old/es.exe')
   assert.equal(live.content.anytxt.url, 'http://127.0.0.1:9921')
   assert.equal(state.ran, true)
-  assert.deepEqual(state.failures, [])
+  assert.equal(state.failures, undefined)
 })
 
 test('a configured profile probes nothing and only pins the marker', async () => {
@@ -308,7 +309,7 @@ test('the marker locks a later reset, so clearing a field stays cleared', async 
   assert.equal(values.files.everything.esPath, '')
 })
 
-test('a down engine is reported, and a cancelled or skipped probe is not a fault', async () => {
+test('a down engine is not a first-run concern, so only the marker lands', async () => {
   const { config, settings } = liveSetup()
   const state = await bootstrap({
     settings,
@@ -319,7 +320,8 @@ test('a down engine is reported, and a cancelled or skipped probe is not a fault
       anytxt: { ok: false, code: 'ANYTXT_DOWN' },
     }),
   })
-  assert.deepEqual(state.failures, [{ engine: 'anytxt', code: 'ANYTXT_DOWN' }])
+  // 「引擎坏了」由每次启动的健康检查报（describe 的 health），首用只做决定、不收集故障。
+  assert.equal(state.failures, undefined)
   // 什么也探测不到时只落一个标记：这次就是这次，下回不再打扰。
   assert.equal(settings.calls.length, 1)
   assert.deepEqual(settings.calls[0].ops, [{ op: 'set', path: PATHS.autoConfigured, value: true }])
@@ -403,4 +405,80 @@ test('without a served namespace nothing is written', async () => {
   const state = await bootstrap({ settings, ns: NS, config: flatConfig({ esPath: 'C:/old/es.exe' }), probe: async () => ({}) })
   assert.deepEqual(state.written, [])
   assert.equal(state.ran, false)
+})
+
+test('deferredWrite claims only the HMR transaction message', () => {
+  assert.equal(deferredWrite(new Error('HMR transactions cannot be nested')), true)
+  assert.equal(deferredWrite(new Error('overridden by a home patch')), false)
+  assert.equal(deferredWrite(undefined), false)
+})
+
+test('a hot-mounted plugin defers its writes instead of reporting a failure', async () => {
+  const infos = []
+  const warnings = []
+  const settings = {
+    describe: () => [{ ns: NS, revision: 1, user: {} }],
+    async mutate() {
+      throw new Error('HMR transactions cannot be nested')
+    },
+  }
+  const state = await bootstrap({
+    settings,
+    ns: NS,
+    config: flatConfig(),
+    logger: { info: (...args) => infos.push(args), warn: (...args) => warnings.push(args) },
+    probe: async () => ({ everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true } }),
+  })
+  // 迁移那一段先撞上事务，就地收手：第二段再把默认值当用户值搬一遍就错了。
+  assert.equal(state.deferred, true)
+  assert.equal(state.error, undefined)
+  assert.equal(state.ran, false)
+  assert.deepEqual(state.written, [])
+  assert.equal(warnings.length, 0)
+  assert.equal(infos.length, 1)
+})
+
+test('the retry outside the transaction writes what the mount could not', async () => {
+  const values = structuredClone(DEFAULTS)
+  const user = {}
+  let nested = true
+  const calls = []
+  const settings = {
+    describe: () => [{ ns: NS, revision: calls.length, user }],
+    async mutate(ns, ops) {
+      if (nested) throw new Error('HMR transactions cannot be nested')
+      calls.push(ops)
+      for (const op of ops) {
+        for (const target of [values, user]) setPath(target, op.path, op.value)
+      }
+    },
+  }
+  const config = liveSetup({ values, user }).config
+  const first = await bootstrap({ settings, ns: NS, config, probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }) })
+  assert.equal(first.deferred, true)
+  nested = false
+  const second = await bootstrap({ settings, ns: NS, config, probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }) })
+  assert.equal(second.deferred, false)
+  assert.equal(calls.length, 1)
+  assert.equal(values.autoConfigured, true)
+})
+
+test('deferred writes are shared, and only run while one is pending', async () => {
+  const state = { deferred: true }
+  let runs = 0
+  let release
+  const write = () => {
+    runs += 1
+    return new Promise((resolve) => { release = () => { state.deferred = false; resolve() } })
+  }
+  const retry = createDeferredWrite(state, write)
+  const first = retry()
+  const second = retry()
+  assert.equal(runs, 1)
+  assert.equal(first, second)
+  release()
+  await first
+  // 已经写过就不再重跑：并发请求不该让同一次探测与写入跑两遍。
+  await retry()
+  assert.equal(runs, 1)
 })

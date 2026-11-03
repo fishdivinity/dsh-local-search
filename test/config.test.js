@@ -36,6 +36,7 @@ test('pathValue and hasPath walk nested configuration', () => {
 test('readConfig unwraps every editable field and keeps timeoutMs plain', () => {
   const snapshot = readConfig(liveConfig({ workRoot: 'sample-root' }))
   assert.equal(snapshot.scopes.workRoot, 'sample-root')
+  assert.equal(snapshot.scopes.defaultScope, 'all')
   assert.equal(snapshot.limits.maxResults, 20)
   assert.equal(snapshot.files.backend, 'everything')
   assert.equal(snapshot.content.anytxt.url, 'http://127.0.0.1:9920')
@@ -109,6 +110,7 @@ test('validateConfig rejects non-positive integers and nameless backends', () =>
   assert.throws(() => validateConfig(liveConfig({ readMaxChars: 1.5 })), /limits\.readMaxChars must be a positive integer/)
   assert.throws(() => validateConfig(liveConfig({ filesBackend: '  ' })), /files\.backend must name a backend/)
   assert.throws(() => validateConfig(liveConfig({ contentBackend: '' })), /content\.backend must name a backend/)
+  assert.throws(() => validateConfig(liveConfig({ defaultScope: 'elsewhere' })), /scopes\.defaultScope/)
 })
 
 test('a non-local endpoint still activates, so a 0.1 profile is never rejected', () => {
