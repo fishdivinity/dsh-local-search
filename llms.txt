@@ -6,7 +6,7 @@ This file is the compact, machine-readable summary for agents and crawlers. The 
 
 ## 中文摘要
 
-DeepSeek Harness 的本机检索插件：文件名走 Everything（`es.exe`），PDF / Word / Excel / PPT / EPUB / RTF / TXT / MD 的正文走 Anytxt，合成五个只读工具。查询由这两个引擎已建好的索引回答，毫秒级，不重新扫盘；整套只读，不写、不删、不重建索引、不做 OCR、不启动引擎。仅 Windows，两个引擎另行安装。
+DeepSeek Harness 的本机文件搜索与文档全文检索插件：文件名走 Everything（`es.exe`），PDF / DOCX / XLSX / PPTX / EPUB / RTF / TXT / MD 的正文走 Anytxt，合成五个只读工具。查询由这两个引擎已建好的索引回答，毫秒级，不重新扫盘；整套只读，不写、不删、不重建索引、不做 OCR、不启动引擎。仅 Windows，两个引擎另行安装。
 
 ## Use it when
 

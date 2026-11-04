@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Local Search",
-    "description": "Read-only Everything filename search and Anytxt document-content search."
+    "description": "Read-only local file search and document full-text search: Everything for names, Anytxt for text inside PDF/DOCX/XLSX/PPTX/EPUB."
   }
 }

@@ -47,7 +47,7 @@ This plugin gives it both: `es.exe` for file and folder **names** wherever Every
 - [Errors and diagnostics](#errors-and-diagnostics)
 - [Security and limits](#security-and-limits)
 - [Known limitations](#known-limitations)
-- [Related plugins](#related-plugins)
+- [How this compares](#how-this-compares)
 - [For AI agents](#for-ai-agents)
 - [Development](#development)
 - [License](#license)
@@ -182,11 +182,15 @@ If a search reports `*_DOWN`, fall back to `grep`/`glob` and say that you fell b
 - No auto-start: starting `ATGUI.exe` writes the index and is left to the user.
 - Anytxt's terms limit personal/non-commercial use; commercial use needs its own license.
 
-## Related plugins
+## How this compares
 
-- [`dsh-tool-everything`](https://dshbase.com/zh/plugins/dsh-tool-everything/) covers Everything filename search through the SDK.
-- [`dsh-workspace-search`](https://github.com/tsonglew/dsh-workspace-search) covers workspace file names/contents in the sidebar.
-- This plugin's differentiator is Anytxt document content plus one routing surface for names and contents.
+| | `local_search_files` + `local_search_content` | [`dsh-tool-everything`](https://github.com/roxyyn0304/dsh-tool-everything) | [`dsh-workspace-search`](https://github.com/tsonglew/dsh-workspace-search) |
+|---|---|---|---|
+| What it reaches | Any path Everything indexed, plus the text inside documents | Any path Everything indexed | Files and text inside one workspace |
+| Document text (PDF/DOCX/XLSX/PPTX/EPUB) | Yes, through Anytxt | No | Plain text only |
+| Prerequisites | Everything + Anytxt running | Everything running (ships its own SDK DLL) | `dsh-better-sidebar` |
+
+The differentiator is the pair: Anytxt document content, and one routing surface that answers both "where is this file" and "what does this document say".
 
 ## For AI agents
 

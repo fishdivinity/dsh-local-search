@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "本地搜索",
-    "description": "只读的 Everything 文件名检索与 Anytxt 文档内容检索。"
+    "description": "只读的本机文件搜索与文档全文检索：文件名走 Everything，PDF/DOCX/XLSX/PPTX/EPUB 正文走 Anytxt。"
   }
 }
