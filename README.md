@@ -7,11 +7,10 @@
 **File names and document text from the whole machine, behind five read-only tools — so the model searches your disk instead of guessing a path.**
 
 [![npm version](https://img.shields.io/npm/v/@fishdivinity/dsh-local-search)](https://www.npmjs.com/package/@fishdivinity/dsh-local-search)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/fishdivinity/dsh-local-search/)
 [![platform](https://img.shields.io/badge/platform-Windows-blue)](#requirements)
 [![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0-blue)](#requirements)
 [![CI](https://img.shields.io/github/actions/workflow/status/fishdivinity/dsh-local-search/ci.yml?branch=main&label=CI)](https://github.com/fishdivinity/dsh-local-search/actions)
-[![GitHub stars](https://img.shields.io/github/stars/fishdivinity/dsh-local-search?style=flat)](https://github.com/fishdivinity/dsh-local-search)
 
 [English](README.md) · [简体中文](README-zh.md) · [Install](#install) · [Configuration](#configuration) · [Tools](#tools) · [Security](#security-and-limits)
 

@@ -7,11 +7,10 @@
 **把整台机器的文件名与文档内容交给五个只读工具——让模型去搜你的盘，而不是猜一个路径。**
 
 [![npm version](https://img.shields.io/npm/v/@fishdivinity/dsh-local-search)](https://www.npmjs.com/package/@fishdivinity/dsh-local-search)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/fishdivinity/dsh-local-search/)
 [![platform](https://img.shields.io/badge/platform-Windows-blue)](#前提)
 [![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0-blue)](#前提)
 [![CI](https://img.shields.io/github/actions/workflow/status/fishdivinity/dsh-local-search/ci.yml?branch=main&label=CI)](https://github.com/fishdivinity/dsh-local-search/actions)
-[![GitHub stars](https://img.shields.io/github/stars/fishdivinity/dsh-local-search?style=flat)](https://github.com/fishdivinity/dsh-local-search)
 
 [English](README.md) · [简体中文](README-zh.md) · [安装](#安装) · [配置](#配置) · [工具](#工具) · [安全](#安全与限制)
 
@@ -47,6 +46,7 @@
 - [错误码与诊断](#错误码与诊断)
 - [安全与限制](#安全与限制)
 - [已知限制](#已知限制)
+- [和同类比](#和同类比)
 - [给 AI 用的部分](#给-ai-用的部分)
 - [开发](#开发)
 - [许可证](#许可证)
@@ -179,6 +179,16 @@ dsh plugin --profile web add @fishdivinity/dsh-local-search       # dsh web
 - Anytxt 索引可能滞后；重要命中要用 `read`/原文件复核。
 - 不自动启动 `ATGUI.exe`（启动会写索引），由用户手动控制。
 - Anytxt 条款限个人/非商业使用；商用需单独授权。
+
+## 和同类比
+
+| | 本插件（`local_search_files` + `local_search_content`） | [`dsh-tool-everything`](https://github.com/roxyyn0304/dsh-tool-everything) | [`dsh-workspace-search`](https://github.com/tsonglew/dsh-workspace-search) |
+|---|---|---|---|
+| 能查到哪 | Everything 索引到的任意路径，外加文档正文 | Everything 索引到的任意路径 | 只在一个工作区内 |
+| 文档正文（PDF/DOCX/XLSX/PPTX/EPUB） | 有，走 Anytxt | 没有 | 只有纯文本 |
+| 前置 | Everything 与 Anytxt 都在跑 | Everything 在跑（自带 SDK DLL） | 先装 `dsh-better-sidebar` |
+
+差别集中在两件事：Anytxt 的文档正文，以及一个同时回答「这个文件在哪」和「这份文档说了什么」的路由面。
 
 ## 给 AI 用的部分
 
