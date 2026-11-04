@@ -1,7 +1,7 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.4.0",
-  "description": "Whole-disk file names through Everything (es.exe) and the text inside PDF, Word, Excel, PowerPoint and EPUB through Anytxt — five read-only tools for DeepSeek Harness, answered from those indexes in milliseconds. 本机检索：全盘文件名秒搜、PDF / Word / Excel / PPT / EPUB 正文检索，查索引不扫盘。",
+  "version": "0.4.1",
+  "description": "Local file search and document full-text search for DeepSeek Harness on Windows - file names through Everything (es.exe), text inside PDF/DOCX/XLSX/PPTX/EPUB through Anytxt, as five read-only tools. 本机文件搜索与文档全文检索：文件名走 Everything，PDF/DOCX/XLSX/PPTX/EPUB 正文走 Anytxt，五个只读工具，查索引不扫盘。",
   "type": "module",
   "main": "lib/index.js",
   "icon": "icon.svg",
@@ -17,6 +17,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "icon.png",
     "README.md",
     "README-zh.md",
     "LICENSE"

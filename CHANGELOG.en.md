@@ -2,6 +2,18 @@
 
 Chinese entries live in [CHANGELOG.md](CHANGELOG.md). Entries up to 0.2.1 keep the English they shipped with; 0.3.0 onward is written in both files.
 
+## 0.4.1 — 2026-11-04
+
+**Findable in the plugin market**: the catalog one-liner now says local file search and document full-text search. The market matches literally, and the old wording only said 检索, so searching for 搜索, 文件搜索 or docx never surfaced this plugin.
+
+- `docs`: the catalog entry (that YAML in `awesome-dsh-plugin`) now names file search, full-text search and the extensions — the market search is literal substring matching, and the old Chinese sentence only said 检索, so `搜索` / `文件搜索` / `本地搜索` / `全文检索` / `docx` all returned zero hits.
+- `package`: `description` is now two plain sentences (npm page and third-party crawlers) that lead with "local file search and document full-text search".
+- `page`: the plugin-list title and one-liner (`locale/zh.json` / `locale/en.json`) and the card description follow the same wording; the six language packs keep their existing page copy.
+- `docs`: `llms.txt` says "本机文件搜索与文档全文检索" and names the extensions as `PDF / DOCX / XLSX / PPTX / EPUB`.
+- `docs`: README "Related plugins" became "How this compares" — a three-row table linking each project's GitHub repository instead of a competitor's catalog install page.
+- `icon`: a new mark — paper with a magnifier cut out of it: the document is the subject, the magnifier is a hole in the page, three lines sit on the paper; `icon.png` is exported for the catalog.
+- `package`: version raised to 0.4.1 (patch: no externally visible behaviour changes).
+
 ## 0.4.0 — 2026-11-03
 
 **Knowing the machine**: platform detection, four-state probes, path semantics. **Diagnosing it**: a copyable report and one error-code document. **Fewer interruptions**: a startup check and a corner card. **More languages**: one file per language.
