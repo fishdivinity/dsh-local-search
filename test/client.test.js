@@ -1370,7 +1370,7 @@ test('both dictionaries carry every key the Host describe asks the page to rende
     'fix.download.everything', 'fix.anytxt.notRunning', 'fix.anytxt.unknown', 'fix.anytxt.install',
     'fix.everything.notRunning', 'fix.everything.notInstalled', 'fix.everything.esMissing',
     'notice.title', 'notice.close', 'remote.note',
-    'diagnose.copy', 'diagnose.title', 'diagnose.hint', 'diagnose.loading', 'diagnose.error', 'diagnose.copyAction',
+    'diagnose.copy', 'diagnose.title', 'diagnose.hint', 'diagnose.issue', 'diagnose.loading', 'diagnose.error', 'diagnose.copyAction',
     'diagnose.copied', 'diagnose.copyFailed',
   ]) keys.add(key)
 
@@ -1816,6 +1816,12 @@ test('the diagnose button fetches the Host text and opens a copy dialog', async 
     assert.ok(area !== undefined, 'the dialog must show the text')
     assert.equal(area.props.readOnly, true)
     assert.equal(area.props.value, text)
+    // 提示先交给 AI 排查：`issue` 是链接，指到仓库的 issue 列表。
+    const issueLink = findElement(modal.props.description, (node) => node.type === 'a')
+    assert.ok(issueLink !== undefined, 'the hint links the issue tracker')
+    assert.equal(issueLink.props.href, 'https://github.com/fishdivinity/dsh-local-search/issues')
+    assert.equal(issueLink.props.target, '_blank')
+    assert.match(issueLink.props.rel, /noreferrer/)
 
     modalButton(modal, 'diagnose.copyAction').props.onClick()
     await pump(hooks, page.render)

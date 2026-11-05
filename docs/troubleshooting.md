@@ -49,7 +49,7 @@ These codes answer the page's own read-only requests, not the tools. The card tu
 | `DIR_NOT_DIRECTORY` | draft check route (`?dir=`) | A draft scope path exists but is a file. | Use a directory. |
 | `ANYTXT_URL_REJECTED` | draft check route (`?anytxtUrl=`) | The draft address is not a loopback `http(s)` URL (HTTP 400). | Use `http://127.0.0.1:<port>`. |
 | `CROSS_SITE_REFUSED` | every read-only route (status, describe, diagnose, locales) | The request did not come from this Host's page (HTTP 403): another site, or a request whose origin is not this Host. | Open the plugin card from this Host; do not call these routes from another origin. |
-| `PROBE_FAILED` | status and diagnose routes | The probe itself threw, and the answer is HTTP 500. | Press **Test connection** or **Copy diagnostics** again; if it repeats, paste the diagnostics text into an issue. |
+| `PROBE_FAILED` | status and diagnose routes | The probe itself threw, and the answer is HTTP 500. | Press **Test connection** or **Copy diagnostics** again; if it repeats, give the text to the assistant, and open an issue only if that does not solve it. |
 
 ## Settings
 
@@ -61,4 +61,4 @@ These codes answer the page's own read-only requests, not the tools. The card tu
 
 | Code | Produced by | What you see | Fix |
 |---|---|---|---|
-| `LOCAL_SEARCH_ERROR` | tool error wrapper | A failure that is not an engine error; the original message is passed through unchanged. | Read the message; if it names nothing actionable, paste the diagnostics text into an issue. |
+| `LOCAL_SEARCH_ERROR` | tool error wrapper | A failure that is not an engine error; the original message is passed through unchanged. | Read the message; if it names nothing actionable, give the diagnostics text to the assistant, and open an issue only if it stays unexplained. |
