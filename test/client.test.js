@@ -431,7 +431,7 @@ test('every control carries the name a browser needs before it stays quiet', asy
   // 原件只负责画（`SettingsValueField` → `<label for=id>` + `<input id>`；`SegmentedControl` →
   // `aria-label` 与按 id 拼出来的 DOM id），值全由页面给，所以这里钉住页面这一侧。
   //
-  // 只数得到页面直接渲染的那些：`ChoiceField` 里的分段控件要等 React 展开这个函数组件才出现，
+  // 只数得到页面直接渲染的那些：`ChoiceField` 里的选项组要等 React 展开这个函数组件才出现，
   // 桩不会展开它，所以计数是 8 个文本框 + 2 个后端选择器。
   const hooks = liveHooks()
   const { mod, stubs } = loadBundle({ hooks: hooks.react })
@@ -460,6 +460,96 @@ test('every control carries the name a browser needs before it stays quiet', asy
   } finally {
     globalThis.fetch = original
   }
+})
+
+test('a choice field is a wrapping radio group, so a long translation moves instead of overlapping', () => {
+  // 宿主的分段控件是等宽网格 + nowrap：4 个会被翻译拉长的标签只分到 ~200px，ru 的
+  // 「Текущее рабочее пространство」约 240px，会压到邻居和药丸上。这里钉住「换行而不是压字」。
+  const { mod } = loadBundle()
+  const field = {
+    labelKey: 'field.defaultScope.label',
+    hintKey: 'field.defaultScope.hint',
+    choices: [
+      { value: 'all', labelKey: 'field.defaultScope.choice.all' },
+      { value: 'workspace', labelKey: 'field.defaultScope.choice.workspace' },
+      { value: 'work', labelKey: 'field.defaultScope.choice.work' },
+      { value: 'personal', labelKey: 'field.defaultScope.choice.personal' },
+    ],
+  }
+  const tree = mod.ChoiceField({
+    t: (key) => key,
+    field,
+    id: 'plugin-config-local-search-defaultScope',
+    value: 'all',
+    disabled: false,
+    onEdit: () => {},
+  })
+  const host = findElement(tree, (node) => node.type === mod.ChoiceGroup)
+  const group = mod.ChoiceGroup(host.props)
+  assert.equal(group.props['aria-labelledby'], 'plugin-config-local-search-defaultScope-label')
+  assert.equal(group.props.style.flexWrap, 'wrap', 'the group must wrap when the labels do not fit')
+  assert.equal(group.props.style.width, 'fit-content', 'segments keep their content width')
+  const radios = collectElements(group, (node) => node.props?.role === 'radio')
+  assert.deepEqual(radios.map((radio) => radio.children.join('')), [
+    'field.defaultScope.choice.all',
+    'field.defaultScope.choice.workspace',
+    'field.defaultScope.choice.work',
+    'field.defaultScope.choice.personal',
+  ])
+  assert.deepEqual(radios.map((radio) => radio.props['aria-checked']), [true, false, false, false])
+  for (const radio of radios) {
+    assert.equal(radio.props.style.whiteSpace, 'nowrap', 'a label is never broken mid-word')
+    assert.equal(radio.props.style.textOverflow, undefined, 'a truncated label would hide the choice')
+    assert.match(radio.props.id, /^plugin-config-local-search-defaultScope-/)
+  }
+  const label = findElement(tree, (node) => node.type === 'span'
+    && node.props?.id === 'plugin-config-local-search-defaultScope-label')
+  assert.equal(label.children.join(''), 'field.defaultScope.label', 'the group is named by the visible label')
+})
+
+test('a full-width field gets the whole row instead of the 560px cell', async () => {
+  // 4 个选项的控件在 560px 里必然换行；整行（网格上限 1100）才排得下一行。
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const original = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => describeConfig() })
+  try {
+    const page = mountPage(mod, hooks)
+    page.render()
+    await page.settle(() => sectionTitles(page.tree()).length > 0)
+    const cell = findElement(page.tree(), (node) => node.props?.style?.gridColumn === '1 / -1')
+    assert.ok(cell !== undefined, 'the default scope is the full-width field')
+    assert.equal(cell.props.style.maxWidth, '100%')
+    assert.equal(cell.props.style.minWidth, 0, 'a grid track may still shrink the cell')
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('arrow keys walk the choice group and skip disabled options', () => {
+  const { mod } = loadBundle()
+  const picked = []
+  const focused = []
+  const options = [
+    { value: 'all', label: 'A' },
+    { value: 'workspace', label: 'B', disabled: true },
+    { value: 'work', label: 'C' },
+    { value: 'personal', label: 'D' },
+  ]
+  const group = mod.ChoiceGroup({ id: 'x', value: 'all', options, onChange: (next) => picked.push(next), disabled: false })
+  const buttons = options.map((_, index) => ({ focus: () => focused.push(index) }))
+  const press = (key) => group.props.onKeyDown({
+    key,
+    preventDefault() {},
+    currentTarget: { querySelectorAll: () => buttons },
+  })
+  press('ArrowRight')
+  press('End')
+  press('Home')
+  press('ArrowLeft')
+  press('Enter')
+  assert.deepEqual(picked, ['work', 'personal', 'personal'], 'Home on the selected option asks for nothing')
+  assert.deepEqual(focused, [2, 3, 0, 3], 'focus follows the walk, so the next arrow keeps moving')
 })
 
 test('a failed startup write is shown on the page, not only in the log', async () => {

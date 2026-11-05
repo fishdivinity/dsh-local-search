@@ -193,7 +193,13 @@ These constraints hold the page together:
 - **No CSS of its own.** The form is built from
   `@deepseek-ai/dsh-client-ui-primitives` (`SettingsForm`,
   `SettingsValueField`, `SegmentedControl`, `Button`, `Switch`) and theme tokens, so
-  a UI skin restyles it for free. `Toast` and `Modal` are optional; the engine card
+  a UI skin restyles it for free. The one control the page draws itself is the choice
+  group: the primitives' `SegmentedControl` divides its width evenly and keeps labels
+  on one line, so four translated labels — Russian's 28-character
+  `Текущее рабочее пространство` against a ~200px segment — paint over their
+  neighbours. `ChoiceGroup` keeps the track and pill colours, gives every segment its
+  content width and wraps instead; it is a `radiogroup`, because these options have
+  no panels behind them. `Toast` and `Modal` are optional; the engine card
   draws its own `div` because `Toast` is top-centre, auto-dismissing and
   `pointer-events: none`, which cannot hold a close button or wait for a repair. The
   card's colours are still only `--dsw-*` tokens, and a deployment without
