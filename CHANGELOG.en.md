@@ -2,6 +2,19 @@
 
 Chinese entries live in [CHANGELOG.md](CHANGELOG.md). Entries up to 0.2.1 keep the English they shipped with; 0.3.0 onward is written in both files.
 
+## 0.4.2 — 2026-11-05
+
+**Long labels stay in their own space**: the four search-scope options no longer paint over each other and share one line whenever the window allows. **Diagnostics ask the assistant first**: the dialog now hands the text to the AI and opens an issue only when that fails.
+
+- `page`: option fields (default scope, `es.exe` encoding) are a hand-drawn `radiogroup` — each segment takes its content width and wraps only when it must. The host `SegmentedControl` divides its width evenly and keeps labels on one line, so Russian's `Текущее рабочее пространство` (28 characters, about 240px) painted over its neighbour and the selected highlight inside a ~200px segment, and the control itself spilled out of its field cell.
+- `page`: a field that spans the row (the default scope) no longer inherits the 560px cell; at ordinary window sizes the four choices fit on one line instead of a full-width band with a lone option on the second row.
+- `page`: the selected state follows each option's own width rather than an equally divided sliding indicator, so uneven tracks cannot point at the wrong segment; arrow keys, Home and End skip disabled options.
+- `page`: the diagnostics hint now says to copy the text and ask the AI first, opening an issue only when that fails; `issue` links the tracker, and the "home directory is already ~" clause is gone (the redaction itself is unchanged).
+- `i18n`: the six language packs gain `diagnose.issue` and a retranslated `diagnose.hint`; the `{issue}` placeholder lets each language place the link.
+- `docs`: `docs/architecture.md` records why this control is hand-drawn; `docs/troubleshooting.md` and both READMEs now say to ask the assistant first and open an issue only if that fails.
+- `test`: pins the full-width cell, the radiogroup's wrapping and arrow keys, and the diagnostics link target.
+- `package`: version raised to 0.4.2 (patch: user-visible fixes only, no new capability).
+
 ## 0.4.1 — 2026-11-04
 
 **Findable in the plugin market**: the catalog one-liner now says local file search and document full-text search. The market matches literally, and the old wording only said 检索, so searching for 搜索, 文件搜索 or docx never surfaced this plugin.
