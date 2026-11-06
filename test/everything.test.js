@@ -106,14 +106,16 @@ test('a missing es.exe is missing-tool, and the install evidence picks the fix',
 })
 
 test('everything else es.exe does is down, whatever is installed', () => {
-  for (const code of ['EVERYTHING_DOWN', 'EVERYTHING_TIMEOUT', 'EVERYTHING_BAD_OUTPUT', 'EVERYTHING_TOO_LARGE']) {
+  for (const code of ['EVERYTHING_DOWN', 'EVERYTHING_BAD_OUTPUT', 'EVERYTHING_TOO_LARGE']) {
     assert.deepEqual(classifyEverything(code, { installed: true, known: true }), { state: 'down', detail: 'not-running' }, code)
   }
-  // 取消没有「哪一环坏了」可说：报 not-running 会让人去查一个没坏的东西。
-  assert.deepEqual(classifyEverything('EVERYTHING_ABORTED', { installed: true, known: true }), {
-    state: 'down',
-    detail: 'unknown',
-  })
+  // 超时与取消都没有「哪一环坏了」可说：报 not-running 会让人去查一个没坏的东西。
+  for (const code of ['EVERYTHING_TIMEOUT', 'EVERYTHING_ABORTED']) {
+    assert.deepEqual(classifyEverything(code, { installed: true, known: true }), {
+      state: 'down',
+      detail: 'unknown',
+    }, code)
+  }
 })
 
 test('probe answers ready with the version es.exe reported and the path it resolved', async () => {

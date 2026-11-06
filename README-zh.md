@@ -9,7 +9,7 @@
 [![npm version](https://img.shields.io/npm/v/@fishdivinity/dsh-local-search)](https://www.npmjs.com/package/@fishdivinity/dsh-local-search)
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/fishdivinity/dsh-local-search/)
 [![platform](https://img.shields.io/badge/platform-Windows-blue)](#前提)
-[![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0-blue)](#前提)
+[![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0--0-blue)](#前提)
 [![CI](https://img.shields.io/github/actions/workflow/status/fishdivinity/dsh-local-search/ci.yml?branch=main&label=CI)](https://github.com/fishdivinity/dsh-local-search/actions)
 
 [English](README.md) · [简体中文](README-zh.md) · [安装](#安装) · [配置](#配置) · [工具](#工具) · [安全](#安全与限制)
@@ -64,7 +64,7 @@
 ## 前提
 
 - Windows。
-- DeepSeek Harness `>=0.2.1-0 <0.3.0`。
+- DeepSeek Harness `>=0.2.1-0 <0.3.0-0`：0.2.1 与 0.2.2（含预发布）都能用，0.3 的预发布拒装。
 - Everything 正在运行，并安装 `es.exe`（voidtools 单独下载；插件会从 PATH/常见目录探测，也可配置 `files.everything.esPath`）。
 - 内容检索需要 Anytxt Searcher 的 **GUI**（`ATGUI.exe`）在运行；JSON-RPC 服务在 GUI 进程里，只有 `ATService` 不够。
 

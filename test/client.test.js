@@ -287,7 +287,7 @@ async function pump(hooks, render, frames = 4) {
  * 一个记录浏览器半边注册了什么、并收集清理函数的插件上下文。
  *
  * `slots.inject` 必须**真的**调那个 `register`：提示卡就是走这条路的，直接抛异常会让
- * 「有失败时挂了一张卡」变成不可测。真实壳子缺槽位时由 `show()` 自己的 `try/catch` 兜住。
+ * 「有失败时显示了一张提示卡」变成不可测。真实壳子缺槽位时由 `show()` 自己的 `try/catch` 兜住。
  */
 function fakeContext() {
   const registrations = []
@@ -309,7 +309,7 @@ function fakeContext() {
       slots: {
         inject: (name, register) => register(),
         register: (options, component) => {
-          // 留下 `disposed`：提示卡「修好以后静默撤卡」是靠这个 disposer 撤的，测试要看得见。
+          // 留下 `disposed`：提示卡「修好后自动移除」是靠这个 disposer 撤的，测试要看得见。
           const entry = { kind: 'slot', name: options.name, options, component, disposed: false }
           registrations.push(entry)
           return () => { entry.disposed = true }
@@ -464,7 +464,7 @@ test('every control carries the name a browser needs before it stays quiet', asy
 
 test('a choice field is a wrapping radio group, so a long translation moves instead of overlapping', () => {
   // 宿主的分段控件是等宽网格 + nowrap：4 个会被翻译拉长的标签只分到 ~200px，ru 的
-  // 「Текущее рабочее пространство」约 240px，会压到邻居和药丸上。这里钉住「换行而不是压字」。
+  // 「Текущее рабочее пространство」约 240px，会压到相邻选项和选中高亮上。这里钉住「换行而不是压字」。
   const { mod } = loadBundle()
   const field = {
     labelKey: 'field.defaultScope.label',
@@ -1591,6 +1591,20 @@ test('the engine card names each failed backend and its own fix', () => {
   assert.equal(guidance({ engine: 'everything', detail: 'unknown' }).text, 'fix.download.everything')
   assert.match(guidance({ engine: 'everything', detail: 'unknown' }).href, /voidtools\.com/)
   // Anytxt 按 `detail` 选：没在运行只给「启动它」（不推下载页），判断不了时给「确认 / 点击安装」。
+  // 超时是第三种：索引忙不是不可达，也不该推下载页，标题和修法都换一套。
+  const timeout = guidance({ engine: 'anytxt', detail: 'unknown', code: 'ANYTXT_TIMEOUT' })
+  assert.equal(timeout.text, 'fix.anytxt.timeout')
+  assert.equal(timeout.href, undefined)
+  assert.equal(guidance({ engine: 'everything', detail: 'unknown', code: 'EVERYTHING_TIMEOUT' }).text, 'fix.everything.timeout')
+  const timeoutCard = mod.EngineCard({
+    t: (key) => key,
+    failures: [{ engine: 'anytxt', code: 'ANYTXT_TIMEOUT' }],
+    onClose: () => {},
+  })
+  const timeoutText = flatText(timeoutCard)
+  assert.match(timeoutText, /status\.anytxt\.timeout/)
+  assert.match(timeoutText, /fix\.anytxt\.timeout/)
+  assert.ok(!timeoutText.includes('status.anytxt.down'), 'a timeout is not an unreachable backend')
   const down = guidance({ engine: 'anytxt', detail: 'not-running' })
   assert.equal(down.key, 'anytxt')
   assert.equal(down.text, 'fix.anytxt.notRunning')
@@ -1658,22 +1672,24 @@ test('without primitives the card still shows, with a native close button', () =
   assert.equal(warnings.length, 1)
 })
 
-test('a failing startup check mounts the card in the shell overlay, and only the user closes it', async (t) => {
-  // 启动检查的节奏（1.5s 轮询）靠假时钟推进，测试不该真的等。
+test('a failing startup check mounts the card, and a still-broken engine keeps it', async (t) => {
+  // 启动检查的节奏（1.5s 轮询、20s 自愈）靠假时钟推进，测试不该真的等。
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const hooks = liveHooks()
   const { mod, stubs } = loadBundle({ hooks: hooks.react })
   const { ctx, registered, disposeAll } = fakeContext()
-  // 跨会话的「别再提醒」是配置里那个开关，不是浏览器会话存储：卡连读一次 sessionStorage 都不该读。
-  let storageTouched = false
+  // 关闭状态按标签页记（刷新/HMR 之后还认），但不许往里写别的东西。
+  const stored = new Map()
   Object.defineProperty(globalThis, 'sessionStorage', {
     configurable: true,
-    get() {
-      storageTouched = true
-      throw new Error('the card must not remember anything in sessionStorage')
+    value: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => { stored.set(key, value) },
+      removeItem: (key) => { stored.delete(key) },
     },
   })
   const asked = []
+  const statusCalls = () => asked.filter((target) => String(target).includes('/api/status')).length
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (url) => {
     const target = String(url)
@@ -1687,8 +1703,12 @@ test('a failing startup check mounts the card in the shell overlay, and only the
         }),
       }
     }
-    // 卡挂上之后不该再问这里：真问了说明又把「自动重探 / 自动撤卡」加回来了。
-    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    // 引擎还没恢复：自愈轮询继续，卡不能自己消失。
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: false, anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'not-running' } }),
+    }
   }
   try {
     // 0.4 不再用 `Toast`：壳子里没有它，卡照样要出来（`loadBundle` 根本没提供这个 primitive）。
@@ -1714,24 +1734,259 @@ test('a failing startup check mounts the card in the shell overlay, and only the
     assert.match(flatText(card), /status\.anytxt\.down/)
     assert.match(flatText(card), /fix\.anytxt\.notRunning/)
 
-    // 不自动重探、不自动撤卡：时间过去多久都只有启动检查那一次 describe。
-    t.mock.timers.tick(300000)
+    // 卡挂着就每 20 秒问一次状态；引擎还没好，卡继续挂着。
+    t.mock.timers.tick(20000)
     await settleMicrotasks()
-    assert.equal(asked.filter((target) => String(target).includes('/api/status')).length, 0,
-      'the card must not re-probe the engines')
-    assert.equal(overlays[0].disposed, false, 'the card stays until the user closes it')
+    assert.equal(statusCalls(), 2, 'one check before drawing the card, then one heal')
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    assert.equal(statusCalls(), 3)
+    assert.equal(overlays[0].disposed, false, 'a still-broken engine keeps the card')
 
-    // 用户点关闭：卡撤掉，不写任何会话记忆。
+    // 用户点关闭：卡撤掉，只记一个「关过」的标记。
     const closeButton = findElement(renderCard(), (node) => node.props?.['aria-label'] === 'notice.close')
     assert.ok(closeButton !== undefined, 'the card needs a way out')
     closeButton.props.onClick()
     await settleMicrotasks()
     assert.equal(overlays[0].disposed, true, 'closing the card removes it for this page')
-    assert.equal(storageTouched, false, 'the card must not leak into sessionStorage')
+    assert.deepEqual([...stored.values()], ['1'], 'the tab remembers the dismissal, nothing else')
+
+    // 关掉之后不再探：自愈轮询随卡一起停。
+    const before = statusCalls()
+    t.mock.timers.tick(120000)
+    await settleMicrotasks()
+    assert.equal(statusCalls(), before, 'a closed card stops probing')
+
+    // 关过就不该再回来：插件重新 apply（热重载）也不显示提示卡、不再轮询。
+    const second = fakeContext()
+    mod.apply(second.ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    assert.equal(second.registered('shell.overlay').length, 0, 'a dismissed card must not come back after re-apply')
+    second.disposeAll()
   } finally {
     globalThis.fetch = originalFetch
     disposeAll()
     delete globalThis.sessionStorage
+    t.mock.timers.reset()
+  }
+})
+
+test('the card goes away by itself once both engines answer', async (t) => {
+  // 回归：ATGUI 比 DSH 晚两分钟起来，启动检查把「还没起来」记成「坏了」，提示卡一直显示到会话结束。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const { ctx, registered, disposeAll } = fakeContext()
+  const originalFetch = globalThis.fetch
+  let healed = false
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => describeConfig({
+          health: { pending: false, failures: [{ engine: 'anytxt', detail: 'unknown', code: 'ANYTXT_DOWN' }] },
+        }),
+      }
+    }
+    return { ok: true, status: 200, json: async () => (healed ? { ok: true } : { ok: false, anytxt: { ok: false } }) }
+  }
+  try {
+    mod.apply(ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    const overlays = registered('shell.overlay')
+    assert.equal(overlays.length, 1)
+
+    // 还没好：卡留着。
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    assert.equal(overlays[0].disposed, false)
+
+    // 引擎起来了：下一次自愈把它摘掉，不需要用户点关闭、也不需要重启。
+    healed = true
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    assert.equal(overlays[0].disposed, true, 'a recovered engine removes the card')
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
+    t.mock.timers.reset()
+  }
+})
+
+test('a page does not draw the card when the engines already answer', async (t) => {
+  // 第二个客户端（手机/新标签页）读到的是启动快照；显示卡片前问一次当前状态，就不会弹假警报。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const { ctx, registered, disposeAll } = fakeContext()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => describeConfig({
+          health: { pending: false, failures: [{ engine: 'anytxt', detail: 'unknown', code: 'ANYTXT_DOWN' }] },
+        }),
+      }
+    }
+    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+  }
+  try {
+    mod.apply(ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    assert.equal(registered('shell.overlay').length, 0, 'the current state wins over the startup snapshot')
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
+    t.mock.timers.reset()
+  }
+})
+
+test('a dismissal survives re-executing the bundle', async (t) => {
+  // 宿主的热重载会重新执行整个 bundle（模块变量归零）；关闭状态按标签页存在 sessionStorage 里。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  // 标记必须先于 bundle 执行：模块加载时就读一次。
+  const stored = new Map([['dsh-local-search.notice.dismissed', '1']])
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => { stored.set(key, value) },
+      removeItem: (key) => { stored.delete(key) },
+    },
+  })
+  const { mod } = loadBundle({ hooks: hooks.react })
+  assert.equal(mod.internals.NOTICE_DISMISS_KEY, 'dsh-local-search.notice.dismissed')
+  const { ctx, registered, disposeAll } = fakeContext()
+  const originalFetch = globalThis.fetch
+  let asked = 0
+  globalThis.fetch = async () => {
+    asked += 1
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    mod.apply(ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    assert.equal(registered('shell.overlay').length, 0, 'a dismissed tab must not get the card back')
+    assert.equal(asked, 0, 'a dismissed tab does not even poll')
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
+    delete globalThis.sessionStorage
+    t.mock.timers.reset()
+  }
+})
+
+test('a status probe that fails does not strand the card', async (t) => {
+  // 路由在重注册间隙 404/500 时，自愈要继续排下一次；否则引擎恢复后卡会永久留在屏上。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const { ctx, registered, disposeAll } = fakeContext()
+  const originalFetch = globalThis.fetch
+  let statusReplies = 0
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => describeConfig({
+          health: { pending: false, failures: [{ engine: 'anytxt', detail: 'unknown', code: 'ANYTXT_DOWN' }] },
+        }),
+      }
+    }
+    statusReplies += 1
+    if (statusReplies <= 2) return { ok: false, status: 500, json: async () => ({}) }
+    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+  }
+  try {
+    mod.apply(ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    const overlays = registered('shell.overlay')
+    assert.equal(overlays.length, 1, 'a failed verification still shows the card it already has')
+
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    assert.equal(overlays[0].disposed, false, 'a 500 keeps the card and schedules the next check')
+
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    assert.equal(overlays[0].disposed, true, 'the next answer removes it')
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
+    t.mock.timers.reset()
+  }
+})
+
+test('the card follows the engines while it is on screen', async (t) => {
+  // 两个都坏 → 只有一个恢复：卡上不该继续显示已经好了的那一行。
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const hooks = liveHooks()
+  const { mod } = loadBundle({ hooks: hooks.react })
+  const { ctx, registered, disposeAll } = fakeContext()
+  const originalFetch = globalThis.fetch
+  let everythingUp = false
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/describe')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => describeConfig({
+          health: {
+            pending: false,
+            failures: [
+              { engine: 'everything', detail: 'not-running', code: 'EVERYTHING_DOWN' },
+              { engine: 'anytxt', detail: 'unknown', code: 'ANYTXT_DOWN' },
+            ],
+          },
+        }),
+      }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        // 只有 Everything 好了：Anytxt 还坏着，整体仍是 ok=false。
+        ok: false,
+        everything: everythingUp ? { ok: true } : { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' },
+        anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'unknown' },
+      }),
+    }
+  }
+  try {
+    mod.apply(ctx)
+    t.mock.timers.tick(1500)
+    await settleMicrotasks()
+    const first = registered('shell.overlay')
+    assert.equal(first.length, 1)
+    assert.deepEqual(first[0].component().props.failures.map((failure) => failure.engine), ['everything', 'anytxt'])
+
+    everythingUp = true
+    t.mock.timers.tick(20000)
+    await settleMicrotasks()
+    const all = registered('shell.overlay')
+    assert.equal(all[0].disposed, true, 'the stale card is replaced, not stacked')
+    assert.deepEqual(
+      all[all.length - 1].component().props.failures.map((failure) => failure.engine),
+      ['anytxt'],
+      'the recovered engine leaves the card',
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+    disposeAll()
     t.mock.timers.reset()
   }
 })

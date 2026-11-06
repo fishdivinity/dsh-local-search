@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { toStatus } from '../lib/probe.js'
+import { healthFailures, probeSettled, toStatus } from '../lib/probe.js'
 
 // 这里只打 `toStatus`：`probeEngines` 会真的 spawn es.exe 并连 Anytxt，不是单测该跑的东西。
 
@@ -71,4 +71,70 @@ test('a failed probe hands the address it tried to the diagnostics, not to the m
   const model = toStatus(failure)
   assert.equal('url' in model, false)
   assert.equal('tried' in model, false)
+})
+
+const READY_BOTH = { everything: { ok: true, state: 'ready' }, anytxt: { ok: true, state: 'ready' } }
+const ANYTXT_TIMEOUT = {
+  everything: { ok: true, state: 'ready' },
+  anytxt: { ok: false, state: 'down', detail: 'unknown', code: 'ANYTXT_TIMEOUT', message: 'Anytxt request timed out' },
+}
+
+test('healthFailures keeps failures and drops skipped or aborted probes', () => {
+  assert.deepEqual(healthFailures({
+    everything: { ok: false, state: 'down', detail: 'not-running', code: 'EVERYTHING_DOWN' },
+    anytxt: { ok: false, code: 'SKIPPED' },
+  }), [{ engine: 'everything', state: 'down', detail: 'not-running', code: 'EVERYTHING_DOWN' }])
+  assert.deepEqual(healthFailures({ anytxt: { ok: false, code: 'ANYTXT_ABORTED' } }), [])
+})
+
+test('a transient failure is probed once more before it is reported', async () => {
+  let calls = 0
+  const waits = []
+  const result = await probeSettled({}, {
+    probe: async () => {
+      calls += 1
+      return calls === 1 ? ANYTXT_TIMEOUT : READY_BOTH
+    },
+    wait: async (ms) => { waits.push(ms) },
+  })
+  assert.equal(calls, 2, 'one retry, not a loop')
+  assert.deepEqual(waits, [3000], 'the retry waits before asking again')
+  assert.equal(result, READY_BOTH, 'the answer is the second probe')
+})
+
+test('a healthy first probe costs no retry', async () => {
+  let calls = 0
+  const result = await probeSettled({}, {
+    probe: async () => { calls += 1; return READY_BOTH },
+    wait: async () => { throw new Error('a healthy probe must not wait') },
+  })
+  assert.equal(calls, 1)
+  assert.equal(result, READY_BOTH)
+})
+
+test('a deterministic failure is reported without waiting', async () => {
+  // 没装 es.exe 不会在 3 秒内变好：重试只会把报错推迟，还多跑一遍 where.exe。
+  const deterministic = {
+    everything: { ok: false, state: 'missing-tool', detail: 'not-installed', code: 'EVERYTHING_ES_NOT_FOUND' },
+    anytxt: { ok: true, state: 'ready' },
+  }
+  let calls = 0
+  const answer = await probeSettled({}, {
+    probe: async () => { calls += 1; return deterministic },
+    wait: async () => { throw new Error('a deterministic failure must not wait') },
+  })
+  assert.equal(calls, 1)
+  assert.equal(answer, deterministic)
+})
+
+test('an aborted context stops before the second probe', async () => {
+  const controller = new AbortController()
+  let calls = 0
+  const answer = await probeSettled({}, {
+    signal: controller.signal,
+    probe: async () => { calls += 1; controller.abort(); return ANYTXT_TIMEOUT },
+    wait: async () => {},
+  })
+  assert.equal(calls, 1)
+  assert.equal(answer, ANYTXT_TIMEOUT, 'the first answer stands, and nothing is reported as healthy')
 })

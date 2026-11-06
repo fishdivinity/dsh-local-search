@@ -9,7 +9,7 @@
 [![npm version](https://img.shields.io/npm/v/@fishdivinity/dsh-local-search)](https://www.npmjs.com/package/@fishdivinity/dsh-local-search)
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/fishdivinity/dsh-local-search/)
 [![platform](https://img.shields.io/badge/platform-Windows-blue)](#requirements)
-[![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0-blue)](#requirements)
+[![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.1--0%20%3C0.3.0--0-blue)](#requirements)
 [![CI](https://img.shields.io/github/actions/workflow/status/fishdivinity/dsh-local-search/ci.yml?branch=main&label=CI)](https://github.com/fishdivinity/dsh-local-search/actions)
 
 [English](README.md) · [简体中文](README-zh.md) · [Install](#install) · [Configuration](#configuration) · [Tools](#tools) · [Security](#security-and-limits)
@@ -64,7 +64,7 @@ This plugin gives it both: `es.exe` for file and folder **names** wherever Every
 ## Requirements
 
 - Windows.
-- DeepSeek Harness `>=0.2.1-0 <0.3.0`.
+- DeepSeek Harness `>=0.2.1-0 <0.3.0-0` — 0.2.1 and 0.2.2 (pre-releases included) run it; 0.3 pre-releases are refused.
 - [Everything](https://www.voidtools.com/) running, plus `es.exe` (a separate download from voidtools; the plugin auto-detects PATH/common install folders, or set `files.everything.esPath`).
 - [Anytxt Searcher](https://anytxt.net/) for content search: the **GUI** (`ATGUI.exe`) must be running because the JSON-RPC service lives inside it. The indexing service alone is not enough.
 
@@ -97,7 +97,7 @@ Path fields are rewritten to one standard spelling on save: `d:/alpha` is stored
 
 **Copied diagnostics.** The card has a **Copy diagnostics** button under its description: it opens a dialog with a plain-text snapshot of this machine — plugin and DSH versions, `profile`, `shell`, whether the page runs against a Host on another machine, OS and node, each engine's state with the code that explains it and, when it failed, the address it tried plus the transport error, the configured `es.exe` path, endpoint, encoding, timeout, limits and backends, the search roots with the default scope, the startup-write outcome (including an error), and the probe time. The text carries a heading, a one-line legend for its status tags, and a link to the code table, so a person or another assistant can act on it without the source. Paste it into the chat so the assistant can work through it first; open an [issue](https://github.com/fishdivinity/dsh-local-search/issues) only if that does not solve it. The home directory and `DSH_HOME` are already reduced to `~`. The same text is at `GET /dsh-local-search/api/diagnose`.
 
-**Startup check.** `checkEnginesOnStart` is on by default: every start probes both engines once and, if one fails, leaves a card in the bottom-right corner with one line per engine and what to fix. The card does not remove itself — closing it hides it for this page only, and the switch is how you stop both the probe and the card. **Test connection** and the first-run pass work either way.
+**Startup check.** `checkEnginesOnStart` is on by default: every start probes both engines once and, if one fails, leaves a card in the bottom-right corner with one line per engine and what to fix. The card re-checks the running engines every 20 seconds and removes itself once both answer — an engine that starts after deepseek harness (Anytxt's GUI commonly does) does not leave a false alarm behind. Closing it hides it for this tab, including after a reload; the switch is how you stop both the probe and the card. **Test connection** and the first-run pass work either way.
 
 The first run fills what it can and then stops: while `files.everything.esPath` or `content.anytxt.url` is still unset, the plugin probes once, writes what answered, and records that pass in a hidden `autoConfigured` key. After that a field you clear stays clear instead of being filled again.
 

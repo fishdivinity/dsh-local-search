@@ -55,16 +55,16 @@
   },
   "engines": {
     "node": ">=22.19.0",
-    "dsh": ">=0.2.1-0 <0.3.0"
+    "dsh": ">=0.2.1-0 <0.3.0-0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
-    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/dsh-llm": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/dsh-system-prompt": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/dsh-timeout": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/dsh-tools": ">=0.2.1-0 <0.3.0",
-    "@deepseek-ai/dsh-working-directory": ">=0.2.1-0 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/dsh-system-prompt": ">=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/dsh-timeout": ">=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/dsh-working-directory": ">=0.2.1-0 <0.3.0-0",
     "@deepseek-ai/schemastery": "^3.18.5",
     "react": "^18.0.0 || ^19.0.0"
   },

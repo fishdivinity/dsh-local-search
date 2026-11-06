@@ -122,10 +122,12 @@ description opens a `Modal` with the `GET /api/diagnose` text in a selectable
 `<textarea>` and a copy control; a refused clipboard falls back to manual select,
 never to a single "copy failed" line. And when the startup check found a failure,
 a card in `shell.overlay` (bottom-right, theme tokens only, `role="status"`) lists
-each failed engine with its fix. The card does not poll and does not remove
-itself — the user closes it, and it is gone for this page; closing lives in
-component state only, so the way to stop being told across sessions is the
-`checkEnginesOnStart` switch, not a second, session-scoped memory.
+each failed engine with its fix. The card re-probes `/api/status` every 20 seconds
+and removes itself once both engines answer, because the engines can start after
+the harness does; a failed re-probe is retried rather than dropping the card. The
+user's dismissal is remembered per tab (session storage), so a reload or a bundle
+reload does not resurrect it; the `checkEnginesOnStart` switch is still what stops
+the check across sessions.
 
 The field grid seats two columns from 656px up and one below, with the grid capped
 at 1100px: two columns at full width are 2×542, the same as before, and a ~700px
