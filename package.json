@@ -1,6 +1,6 @@
 {
   "name": "@fishdivinity/dsh-local-search",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Local file search and document full-text search for DeepSeek Harness on Windows - file names through Everything (es.exe), text inside PDF/DOCX/XLSX/PPTX/EPUB through Anytxt, as five read-only tools. 本机文件搜索与文档全文检索：文件名走 Everything，PDF/DOCX/XLSX/PPTX/EPUB 正文走 Anytxt，五个只读工具，查索引不扫盘。",
   "type": "module",
   "main": "lib/index.js",

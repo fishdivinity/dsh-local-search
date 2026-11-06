@@ -1,6 +1,23 @@
 # Changelog
 
-本文件中文；英文全量在 [CHANGELOG.en.md](CHANGELOG.en.md)。0.2.1 及更早的条目保留发布时的英文原文，0.3.0 起两边各写一份。
+本文件中文；英文全量在 [CHANGELOG.en.md](CHANGELOG.en.md)。0.2.1 及更早的条目在归档里（保留发布时的英文原文），0.3.0 起两边各写一份。
+
+## 0.4.3 — 2026-11-06
+
+**误报的故障不再一直显示**：引擎比 DSH 起得晚时，右下角的提示卡会在引擎恢复后自己消失；超时就说超时，不再说成「不可达」；关闭过的提示卡刷新后不再出现。
+
+- `page`: 启动检查等宿主把插件加载完再探测，且只对超时/连不上重试一次；没装、地址被拒这类不会自己变好的失败直接上报。
+- `page`: 系统提示补一句：纯取正文优先用本地检索，`python-docx` 只用于表格、样式、编辑、刚改过的文件或索引未命中。
+- `page`: 页面最多等 60 秒（按真实时间，不再按轮询次数截断）；`describe` 请求失败或返回错误状态时继续重试，单次请求加 10 秒上限。
+- `page`: 显示提示卡前先查一次 `/api/status`；卡片显示期间每 20 秒再查一次——两个引擎都好就移除卡片，只恢复一个就更新卡片里的行；查询失败也继续重试，卡片不会一直留在屏幕上。
+- `page`: 关闭过的提示卡按标签页记住（`sessionStorage` 一个键、值只有 `1`），刷新与热重载都不再出现；新标签页与手机各算各的。
+- `route`: `/api/status` 不带草稿地址时把结果写回 `describe.health`，`health` 不再是启动那一刻的旧结果。
+- `page`: 超时文案精简，不再建议调对探测无效的 `timeoutMs`；`EVERYTHING_TIMEOUT` 不再被诊断归成「没在运行」。
+- `page`: 声明自带配置页（`settings.configure({ auto: false })`），防止宿主将来按 schema 再生成一套表单。
+- `docs`: README 与 `docs/architecture.md` 的提示卡行为改成「引擎恢复后自己消失；关闭按标签页记住」；0.2.1 及以前的条目移进 `docs/CHANGELOG-archive.md`。
+- `package`: `engines.dsh` 上界改成 `<0.3.0-0`，挡住 0.3 的预发布。
+- `test`: 新增用例覆盖：只重试可能自己恢复的失败、第二个客户端不会显示过时的提示卡、关闭后重载仍然记住、接口报 500 时提示卡不会永久停留、提示卡随引擎状态更新。
+- `package`: 版本号抬到 0.4.3（patch：只修误报与文案，没有新增能力）。
 
 ## 0.4.2 — 2026-11-05
 
@@ -96,36 +113,4 @@
 - `release`: 发布说明改为中文在前、英文在后，模板是 `docs/releases/TEMPLATE.md`。
 - `test`: 新增 `test/describe.test.js` 与 `test/bootstrap.test.js`；`test/config.test.js`、`test/client.test.js` 按嵌套结构重写，`test/route.test.js` 补上 describe 路由。`test/client.test.js` 现在比对 describe 给出的每个字典键，并用一套会真的重渲染的 hooks 驱动页面——静态的 `useState` 桩看不出「effect 改了状态、那个状态又在依赖数组里」这类死锁。
 
-## 0.2.1 — 2026-10-29
-
-- `es.exe` exiting 1 with an empty stdout is now `EVERYTHING_DOWN` instead of an empty result: es.exe uses that code both for "nothing matched" and for a dead connection, so a closed Everything window no longer reads as "no files found" while the page's Test control says the engine is down.
-- A capped page whose hits were all in `$RECYCLE.BIN` / `System Volume Information` reports "no files found in the returned window (the result set was capped)" instead of a flat "No files found"; the cap is measured on what es.exe returned, before the index filter.
-- `local_search_status` reports a cancelled probe as `ABORTED — <CODE>` rather than `DOWN`, so cancellation no longer points at the engine.
-- `scope=all` drops roots nested inside another root: AnyTxt is queried once per tree, so overlapping roots no longer double the "x of y" total or flip `truncated` early.
-- The configuration page's Test control names the missing link: the probe route reports whether Everything is not installed, installed but not running, or missing `es.exe`, and the page shows the matching one-line fix (the model-facing status keeps its two stable codes). When the install check itself cannot run, it reports `unknown` and keeps the generic hint instead of claiming Everything is absent.
-- The hard caps live in `lib/limits.js`; a test now pins the page's copies of the caps and the loopback host list to the Host's own rules.
-- The routing prompt is shorter: 447 characters / 61 words to 227 / 28, with the same four decisions, since each tool's own description already carries its purpose.
-- Release bodies expand relative links (`../../CHANGELOG.md`) to `blob/<tag>/` URLs when the workflow publishes them, so the repository copy stays readable and the published page stays clickable.
-
-## 0.2.0 — 2026-10-28
-
-- Configuration page as a card in the Plugins page's **Official plugins** group (`plugins.item`, the same shape dsh-github contributes); the card id is the row id, which is what the page resolves the form with.
-- Nine fields are now editable there and apply to the next tool call: `esPath`, `esEncoding`, `anytxtUrl`, `workspaceRoot`, `workRoot`, `personalRoot`, `allRoots`, `maxResults`, `readMaxChars`.
-- The page lays fields out the way the official settings pages do: sections with a small heading over a responsive field grid, instead of one field per row. The grid seats two columns from 460px up (four path fields read as two rows), and each field sits in a plain wrapper so the field primitive's `.field + .field` separator does not draw inside a cell.
-- `esEncoding` is a two-choice control on the page (`gbk` / `utf-8`); the schema keeps accepting any `TextDecoder` label, so a 0.1 profile that wrote `utf8` still activates and the page shows the matching segment.
-- New multi-colour `icon.svg` (gradients, no `currentColor`), wired through `package.json` `icon` and the `./icon` export. It shows on the bundle card in Installed plugins, on npm, and in the README; the Official plugins card keeps the page's own default artwork, because that slot resolves icons from a hard-coded map of the four built-in pages.
-- `anytxtUrl` must be local (`127.0.0.1`, `localhost`, `[::1]`): both indexes describe this machine, so a remote endpoint would answer with paths that do not resolve here. The rule is enforced by the content engine (`ANYTXT_ENDPOINT_REMOTE`), not at activation, so a 0.1 profile pointing elsewhere still loads and only content search reports it; `maxResults` / `readMaxChars` are range-checked in the schema, so a page write can no longer persist an out-of-range value.
-- **Test connection** sits under the Anytxt endpoint, probes the address in the field (no save needed) together with Everything, and answers in one line, through the read-only Host route `GET /dsh-local-search/api/status`; `lib/probe.js` runs the same probe for `local_search_status`. The route refuses cross-site requests and accepts a draft only as a loopback URL; an AnyTXT redirect is refused instead of re-POSTing off-machine. A failing engine links to its official download page — the package never bundles, downloads, or installs either product.
-- `lib/config.js` reads a plain snapshot per call, so a saved value is not frozen at activation.
-- `timeoutMs` stays profile-YAML only: each tool fixes its deadline at registration.
-- The page renders from the shipped UI primitives with no CSS of its own, so UI skins restyle it unchanged.
-- New `test/config.test.js`, `test/route.test.js`, and `test/client.test.js`.
-
-## 0.1.0 — 2026-10-28
-
-- Initial native Host plugin.
-- `local_search_files` via Everything (`es.exe`), with auto-detection and GBK decoding.
-- `local_search_content`, `local_search_fragments`, `local_search_read` via Anytxt JSON-RPC.
-- `local_search_status` for both engines.
-- `workspace` / `work` / `personal` / `all` scopes; `engine: auto|everything|anytxt`.
-- Read-only boundaries: fixed `es.exe` argv, no Anytxt write methods, bounded results.
+更早的版本（0.2.1 及以前）在 [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md)。
