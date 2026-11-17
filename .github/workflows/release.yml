@@ -48,6 +48,7 @@ jobs:
             "docs/releases/$GITHUB_REF_NAME.md" \
             "$RUNNER_TEMP/release-notes.md"
 
+      - run: npm ci
       - run: npm test
       - run: npm run check
 
