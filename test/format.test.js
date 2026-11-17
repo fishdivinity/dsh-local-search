@@ -1,13 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filetimeToIso, formatContent, formatFiles, formatFragments, formatRead, formatStatus } from '../lib/format.js'
+import { engineEntries, engineNames } from '../lib/engines.js'
+import { formatContent, formatFiles, formatFragments, formatRead, formatStatus } from '../lib/format.js'
 
-test('filetimeToIso converts a FILETIME and ignores empty values', () => {
-  assert.equal(filetimeToIso(0), undefined)
-  assert.equal(filetimeToIso(-1), undefined)
-  const iso = filetimeToIso(134368593493822223)
-  assert.match(iso, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
-})
+/** 状态文本要注册表视图：格式化器不再 import 注册表（否则与 `everything.js` 成环）。 */
+const REGISTRIES = { entries: engineEntries(), names: engineNames() }
+const statusText = (value) => formatStatus(value, REGISTRIES)
 
 test('formatFiles renders items, sizes, dates, and the capped header', () => {
   const value = {
@@ -86,10 +84,11 @@ test('formatRead says so when the window is past the end', () => {
 })
 
 test('formatStatus marks skipped probes and lists registered engines', () => {
-  const text = formatStatus({
-    everything: { ok: false, code: 'SKIPPED', message: 'not checked because engine=anytxt' },
-    anytxt: { ok: true, url: 'http://127.0.0.1:9920' },
-    engines: { files: ['everything'], content: ['anytxt'] },
+  const text = statusText({
+    engines: {
+      everything: { ok: false, code: 'SKIPPED', message: 'not checked because engine=anytxt' },
+      anytxt: { ok: true, url: 'http://127.0.0.1:9920' },
+    },
     roots: { workspace: 'D:\\Projects' },
   })
   assert.match(text, /Everything: SKIPPED/)
@@ -98,9 +97,11 @@ test('formatStatus marks skipped probes and lists registered engines', () => {
 })
 
 test('formatStatus shows both engines and roots', () => {
-  const text = formatStatus({
-    everything: { ok: true, version: '1.4.1.1030', path: 'C:\\Everything\\es.exe' },
-    anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'not running' },
+  const text = statusText({
+    engines: {
+      everything: { ok: true, version: '1.4.1.1030', path: 'C:\\Everything\\es.exe' },
+      anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'not running' },
+    },
     roots: { workspace: 'D:\\Projects', work: 'D:\\Projects', personal: 'D:\\Documents', all: ['C:\\', 'D:\\'], default: 'all' },
   })
   assert.match(text, /Everything: OK \(1\.4\.1\.1030\)/)
@@ -110,9 +111,8 @@ test('formatStatus shows both engines and roots', () => {
 })
 
 test('formatStatus marks a scope=all fallback to the workspace', () => {
-  const text = formatStatus({
-    everything: { ok: true },
-    anytxt: { ok: true },
+  const text = statusText({
+    engines: { everything: { ok: true }, anytxt: { ok: true } },
     roots: { all: ['D:\\Projects'], allFallback: true, default: 'all' },
   })
   assert.match(text, /^allFallback=workspace$/m)
@@ -121,9 +121,8 @@ test('formatStatus marks a scope=all fallback to the workspace', () => {
 })
 
 test('formatStatus lists configured roots that are missing', () => {
-  const text = formatStatus({
-    everything: { ok: true },
-    anytxt: { ok: true },
+  const text = statusText({
+    engines: { everything: { ok: true }, anytxt: { ok: true } },
     roots: { all: ['C:\\'], allMissing: ['D:\\Projects'], default: 'all' },
   })
   assert.match(text, /^allMissing=D:\\Projects$/m)
@@ -131,9 +130,11 @@ test('formatStatus lists configured roots that are missing', () => {
 })
 
 test('a cancelled probe reads as ABORTED, not as a dead engine', () => {
-  const text = formatStatus({
-    everything: { ok: false, code: 'EVERYTHING_ABORTED', message: 'aborted' },
-    anytxt: { ok: false, code: 'ANYTXT_ABORTED', message: 'aborted' },
+  const text = statusText({
+    engines: {
+      everything: { ok: false, code: 'EVERYTHING_ABORTED', message: 'aborted' },
+      anytxt: { ok: false, code: 'ANYTXT_ABORTED', message: 'aborted' },
+    },
     roots: {},
   })
   assert.match(text, /Everything: ABORTED — EVERYTHING_ABORTED/)
@@ -144,21 +145,23 @@ test('a cancelled probe reads as ABORTED, not as a dead engine', () => {
 test('the model-facing output never leaks the page-only fields', () => {
   // 给模型的输出只给「能不能用」：四态、修法、提示、插件版本、平台都不许进这一份输出，否则模型会把
   // 一次检索失败升级成一次环境排查（见 docs/architecture.md 的 two outputs 一节）。
-  const text = formatStatus({
-    everything: {
-      ok: false,
-      code: 'EVERYTHING_DOWN',
-      message: 'the engine did not answer',
-      state: 'down',
-      detail: 'not-running',
-      hint: 'start the Everything executable',
-    },
-    anytxt: {
-      ok: true,
-      url: 'http://127.0.0.1:9920',
-      state: 'ready',
-      detail: 'not-running-by-name-only',
-      hint: 'a page-only hint',
+  const text = statusText({
+    engines: {
+      everything: {
+        ok: false,
+        code: 'EVERYTHING_DOWN',
+        message: 'the engine did not answer',
+        state: 'down',
+        detail: 'not-running',
+        hint: 'start the Everything executable',
+      },
+      anytxt: {
+        ok: true,
+        url: 'http://127.0.0.1:9920',
+        state: 'ready',
+        detail: 'not-running-by-name-only',
+        hint: 'a page-only hint',
+      },
     },
     roots: { workspace: 'D:\\Alpha' },
     platform: 'win32',

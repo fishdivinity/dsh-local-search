@@ -73,18 +73,22 @@ test('a failed probe hands the address it tried to the diagnostics, not to the m
   assert.equal('tried' in model, false)
 })
 
-const READY_BOTH = { everything: { ok: true, state: 'ready' }, anytxt: { ok: true, state: 'ready' } }
+const READY_BOTH = { engines: { everything: { ok: true, state: 'ready' }, anytxt: { ok: true, state: 'ready' } } }
 const ANYTXT_TIMEOUT = {
-  everything: { ok: true, state: 'ready' },
-  anytxt: { ok: false, state: 'down', detail: 'unknown', code: 'ANYTXT_TIMEOUT', message: 'Anytxt request timed out' },
+  engines: {
+    everything: { ok: true, state: 'ready' },
+    anytxt: { ok: false, state: 'down', detail: 'unknown', code: 'ANYTXT_TIMEOUT', message: 'Anytxt request timed out' },
+  },
 }
 
 test('healthFailures keeps failures and drops skipped or aborted probes', () => {
   assert.deepEqual(healthFailures({
-    everything: { ok: false, state: 'down', detail: 'not-running', code: 'EVERYTHING_DOWN' },
-    anytxt: { ok: false, code: 'SKIPPED' },
+    engines: {
+      everything: { ok: false, state: 'down', detail: 'not-running', code: 'EVERYTHING_DOWN' },
+      anytxt: { ok: false, code: 'SKIPPED' },
+    },
   }), [{ engine: 'everything', state: 'down', detail: 'not-running', code: 'EVERYTHING_DOWN' }])
-  assert.deepEqual(healthFailures({ anytxt: { ok: false, code: 'ANYTXT_ABORTED' } }), [])
+  assert.deepEqual(healthFailures({ engines: { anytxt: { ok: false, code: 'ANYTXT_ABORTED' } } }), [])
 })
 
 test('a transient failure is probed once more before it is reported', async () => {

@@ -26,27 +26,31 @@ function lastBody(response) {
   return JSON.parse(response.calls.at(-1).body)
 }
 
-test('GET answers both engine statuses as JSON', async () => {
+test('GET answers every engine status as JSON', async () => {
   const response = fakeResponse()
   await statusHandler({ method: 'GET' }, response, async () => ({
-    everything: { ok: true, version: '1.4.1' },
-    anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'unreachable' },
+    engines: {
+      everything: { ok: true, version: '1.4.1' },
+      anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'unreachable' },
+    },
   }))
 
   assert.equal(response.calls[0].status, 200)
   assert.equal(response.calls[0].headers['cache-control'], 'no-store')
   const body = lastBody(response)
   assert.equal(body.ok, false)
-  assert.equal(body.everything.version, '1.4.1')
-  assert.equal(body.anytxt.code, 'ANYTXT_DOWN')
+  assert.equal(body.engines.everything.version, '1.4.1')
+  assert.equal(body.engines.anytxt.code, 'ANYTXT_DOWN')
   assert.equal(typeof body.checkedAt, 'number')
 })
 
-test('ok is true only when both engines answer', async () => {
+test('ok is true only when every engine answers', async () => {
   const response = fakeResponse()
   await statusHandler({ method: 'GET' }, response, async () => ({
-    everything: { ok: true },
-    anytxt: { ok: true, url: 'http://127.0.0.1:9920' },
+    engines: {
+      everything: { ok: true },
+      anytxt: { ok: true, url: 'http://127.0.0.1:9920' },
+    },
   }))
   assert.equal(lastBody(response).ok, true)
 })
@@ -100,8 +104,7 @@ test('a cross-site request is refused before it costs an es.exe spawn', async ()
   // 一个浏览器头都没有：这是本机进程，不在 CSRF 风险范围内。
   const localProcess = fakeResponse()
   await statusHandler({ method: 'GET', url: '/dsh-local-search/api/status' }, localProcess, async () => ({
-    everything: { ok: true },
-    anytxt: { ok: true },
+    engines: { everything: { ok: true }, anytxt: { ok: true } },
   }))
   assert.equal(localProcess.calls[0].status, 200)
 })
@@ -111,7 +114,7 @@ test('HEAD answers without probing and sends no body', async () => {
   let probed = false
   await statusHandler({ method: 'HEAD' }, response, async () => {
     probed = true
-    return { everything: { ok: true }, anytxt: { ok: true } }
+    return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
   })
   assert.equal(probed, false)
   assert.equal(response.calls[0].status, 200)
@@ -127,7 +130,7 @@ test('a loopback draft rides the query into the probe', async () => {
     response,
     async (options) => {
       received = options
-      return { everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } } }
     },
   )
   assert.equal(received.anytxtUrl, 'http://127.0.0.1:9921')
@@ -158,7 +161,7 @@ test('a dead response never rejects the route', async () => {
       end() {},
       destroy() { destroyed = true },
     },
-    async () => ({ everything: { ok: true }, anytxt: { ok: true } }),
+    async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } }),
   )
   assert.equal(destroyed, true)
 })
@@ -168,7 +171,7 @@ test('without a draft the probe receives no override', async () => {
   let received
   await statusHandler({ method: 'GET', url: '/dsh-local-search/api/status' }, response, async (options) => {
     received = options
-    return { everything: { ok: true }, anytxt: { ok: true } }
+    return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
   })
   assert.equal(received.anytxtUrl, undefined)
 })
@@ -178,7 +181,7 @@ test('the page-only route asks the probe for the actionable detail', async () =>
   let received
   await statusHandler({ method: 'GET', url: '/dsh-local-search/api/status' }, fakeResponse(), async (options) => {
     received = options
-    return { everything: { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' }, anytxt: { ok: true } }
+    return { engines: { everything: { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' }, anytxt: { ok: true } } }
   })
   assert.equal(received.detail, true)
 })
@@ -191,7 +194,7 @@ test('the route registers as an exact route on the declared path', () => {
       return () => {}
     },
   }
-  const probe = async () => ({ everything: { ok: true }, anytxt: { ok: true } })
+  const probe = async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } })
   const dispose = registerStatusRoute(server, {}, probe)
 
   assert.equal(registered.length, 1)
@@ -350,7 +353,7 @@ test('a draft path that exists lets the probe run', async () => {
     response,
     async () => {
       probed = true
-      return { everything: { ok: true }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
     },
   )
   assert.equal(probed, true)
@@ -412,7 +415,7 @@ test('a draft directory that exists lets the probe run', async () => {
     response,
     async () => {
       probed = true
-      return { everything: { ok: true }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
     },
   )
   assert.equal(probed, true)
@@ -431,7 +434,7 @@ test('checkOnly answers the drafts without spending an es.exe spawn', async () =
     response,
     async () => {
       probed = true
-      return { everything: { ok: true }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
     },
   )
   assert.equal(probed, false, 'a check-only request must not probe')
@@ -439,7 +442,7 @@ test('checkOnly answers the drafts without spending an es.exe spawn', async () =
   const body = lastBody(response)
   assert.equal(body.ok, true)
   assert.equal(body.drafts.dirs.length, 1)
-  assert.equal(body.everything, undefined)
+  assert.equal(body.engines, undefined)
 })
 
 test('a ~-rooted draft directory is expanded before it is checked', () => {

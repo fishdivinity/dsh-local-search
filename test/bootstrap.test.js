@@ -172,7 +172,7 @@ test('autoconfiguration only runs while a field is still unset', () => {
 
 test('a detected es.exe path is written back', () => {
   const ops = autoconfigOps(
-    { everything: { ok: true, path: 'C:/Program Files/Everything/es.exe' }, anytxt: { ok: true, url: DEFAULTS.content.anytxt.url } },
+    { engines: { everything: { ok: true, path: 'C:/Program Files/Everything/es.exe' }, anytxt: { ok: true, url: DEFAULTS.content.anytxt.url } } },
     nestedConfig(),
     {},
   )
@@ -181,7 +181,7 @@ test('a detected es.exe path is written back', () => {
 
 test('autoconfiguration never overwrites a value the user already set', () => {
   const ops = autoconfigOps(
-    { everything: { ok: true, path: 'C:/es.exe' }, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } },
+    { engines: { everything: { ok: true, path: 'C:/es.exe' }, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } } },
     nestedConfig(),
     { files: { everything: { esPath: 'D:/mine.exe' } }, content: { anytxt: { url: 'http://127.0.0.1:9921' } } },
   )
@@ -189,11 +189,11 @@ test('autoconfiguration never overwrites a value the user already set', () => {
 })
 
 test('the 9921 fallback is recorded only when it is what answered', () => {
-  const ops = autoconfigOps({ everything: {}, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } }, nestedConfig(), {})
+  const ops = autoconfigOps({ engines: { everything: {}, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } } }, nestedConfig(), {})
   assert.deepEqual(ops, [{ op: 'set', path: PATHS.anytxtUrl, value: 'http://127.0.0.1:9921' }])
   // 用户已经把地址改到别处：探测结果不再覆盖它。
   const alreadyMoved = nestedConfig({ content: { anytxt: { url: 'http://127.0.0.1:9930' } } })
-  assert.deepEqual(autoconfigOps({ everything: {}, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } }, alreadyMoved, {}), [])
+  assert.deepEqual(autoconfigOps({ engines: { everything: {}, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } } }, alreadyMoved, {}), [])
 })
 
 test('bootstrap migrates first, then writes what the probe found', async () => {
@@ -207,7 +207,7 @@ test('bootstrap migrates first, then writes what the probe found', async () => {
     // 第一次迁移写完之后，es.exe 已经在配置里，于是自动配置不再重复写它，只补地址。
     probe: async (received, options) => {
       probes.push(options)
-      return { everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } }
+      return { engines: { everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true, url: 'http://127.0.0.1:9921' } } }
     },
   })
   assert.equal(probes.length, 1)
@@ -249,7 +249,7 @@ test('a configured profile probes nothing and only pins the marker', async () =>
     config,
     probe: async () => {
       probes += 1
-      return { everything: { ok: true }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
     },
   })
   assert.equal(probes, 0)
@@ -276,7 +276,7 @@ test('an 0.3 profile with no flat keys gets the marker and nothing else', async 
     config,
     probe: async () => {
       probes += 1
-      return { everything: { ok: true }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true }, anytxt: { ok: true } } }
     },
   })
   assert.equal(probes, 0)
@@ -300,7 +300,7 @@ test('the marker locks a later reset, so clearing a field stays cleared', async 
     config,
     probe: async () => {
       probes += 1
-      return { everything: { ok: true, path: 'C:/es.exe' }, anytxt: { ok: true } }
+      return { engines: { everything: { ok: true, path: 'C:/es.exe' }, anytxt: { ok: true } } }
     },
   })
   assert.equal(probes, 0)
@@ -316,8 +316,10 @@ test('a down engine is not a first-run concern, so only the marker lands', async
     ns: NS,
     config,
     probe: async () => ({
-      everything: { ok: false, code: 'EVERYTHING_ABORTED' },
-      anytxt: { ok: false, code: 'ANYTXT_DOWN' },
+      engines: {
+        everything: { ok: false, code: 'EVERYTHING_ABORTED' },
+        anytxt: { ok: false, code: 'ANYTXT_DOWN' },
+      },
     }),
   })
   // 「引擎坏了」由每次启动的健康检查报（describe 的 health），首用只做决定、不收集故障。
@@ -346,7 +348,7 @@ test('a settings conflict is retried once with a fresh revision', async () => {
     settings,
     ns: NS,
     config,
-    probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }),
+    probe: async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } }),
   })
   assert.equal(conflicts, 1)
   assert.deepEqual(state.written, ['esPath'])
@@ -367,7 +369,7 @@ test('a refused migration write is logged and the startup continues', async () =
     ns: NS,
     config: flatConfig({ esPath: 'C:/old/es.exe' }),
     logger: { warn: (...args) => warnings.push(args) },
-    probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }),
+    probe: async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } }),
   })
   // 迁移与随后的标记各失败一次，都只降级：旧键留着，readConfig 的回退让它继续生效。
   assert.equal(warnings.length, 2)
@@ -388,7 +390,7 @@ test('a refused autoconfiguration write is logged and the startup continues', as
     ns: NS,
     config: flatConfig(),
     logger: { warn: (...args) => warnings.push(args) },
-    probe: async () => ({ everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true } }),
+    probe: async () => ({ engines: { everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true } } }),
   })
   assert.equal(warnings.length, 1)
   assert.equal(state.ran, true)
@@ -427,7 +429,7 @@ test('a hot-mounted plugin defers its writes instead of reporting a failure', as
     ns: NS,
     config: flatConfig(),
     logger: { info: (...args) => infos.push(args), warn: (...args) => warnings.push(args) },
-    probe: async () => ({ everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true } }),
+    probe: async () => ({ engines: { everything: { ok: true, path: 'C:/new/es.exe' }, anytxt: { ok: true } } }),
   })
   // 迁移那一段先撞上事务，就地收手：第二段再把默认值当用户值搬一遍就错了。
   assert.equal(state.deferred, true)
@@ -454,10 +456,10 @@ test('the retry outside the transaction writes what the mount could not', async 
     },
   }
   const config = liveSetup({ values, user }).config
-  const first = await bootstrap({ settings, ns: NS, config, probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }) })
+  const first = await bootstrap({ settings, ns: NS, config, probe: async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } }) })
   assert.equal(first.deferred, true)
   nested = false
-  const second = await bootstrap({ settings, ns: NS, config, probe: async () => ({ everything: { ok: true }, anytxt: { ok: true } }) })
+  const second = await bootstrap({ settings, ns: NS, config, probe: async () => ({ engines: { everything: { ok: true }, anytxt: { ok: true } } }) })
   assert.equal(second.deferred, false)
   assert.equal(calls.length, 1)
   assert.equal(values.autoConfigured, true)

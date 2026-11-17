@@ -8,3 +8,7 @@ notes/
 AGENTS.md
 test/fixtures/local.*
 CODE-REVIEW-*.md
+.dsh-code-index/
+.npm-cache-local/
+.tmp/
+.tmp-*

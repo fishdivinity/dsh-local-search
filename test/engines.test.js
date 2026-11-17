@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { engineNames, resolveContentEngine, resolveFilesEngine } from '../lib/engines.js'
+import { engineEntries, engineNames, resolveContentEngine, resolveFilesEngine } from '../lib/engines.js'
 import { engineLabel } from '../lib/labels.js'
 import { formatStatus } from '../lib/format.js'
+
+/** 状态文本要注册表视图：格式化器不再 import 注册表（否则与 `everything.js` 成环）。 */
+const REGISTRIES = { entries: engineEntries(), names: engineNames() }
 
 test('auto resolves the first registered engine of each kind', () => {
   assert.equal(resolveFilesEngine('auto').name, 'everything')
@@ -39,9 +42,11 @@ test('the status text takes its labels from one place', () => {
   assert.equal(engineLabel('anytxt'), 'Anytxt')
   assert.equal(engineLabel('unregistered'), 'unregistered')
   const text = formatStatus({
-    everything: { ok: true, version: '1.4.1.1030' },
-    anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'down' },
-  })
+    engines: {
+      everything: { ok: true, version: '1.4.1.1030' },
+      anytxt: { ok: false, code: 'ANYTXT_DOWN', message: 'down' },
+    },
+  }, REGISTRIES)
   assert.match(text, /^Everything: OK \(1\.4\.1\.1030\)$/m)
   assert.match(text, /^Anytxt: DOWN — ANYTXT_DOWN: down$/m)
 })

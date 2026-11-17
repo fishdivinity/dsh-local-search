@@ -24,7 +24,8 @@
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/engines.js && node --check lib/labels.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/roots.js && node --check lib/platform.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/fields.js && node --check lib/schema.js && node --check lib/describe.js && node --check lib/bootstrap.js && node --check lib/diagnose.js && node --check lib/limits.js && node --check lib/probe.js && node --check lib/status.js && node --check lib/route.js && node --check lib/locale-packs.js && node --check lib/settings-page.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs && node --check scripts/privacy-scan.mjs",
+    "check": "node --check lib/index.js && node --check lib/tools.js && node --check lib/tools/shared.js && node --check lib/tools/files.js && node --check lib/tools/content.js && node --check lib/tools/fragments.js && node --check lib/tools/read.js && node --check lib/tools/status.js && node --check lib/engines.js && node --check lib/labels.js && node --check lib/ref.js && node --check lib/everything.js && node --check lib/anytxt.js && node --check lib/result.js && node --check lib/time.js && node --check lib/roots.js && node --check lib/platform.js && node --check lib/format.js && node --check lib/errors.js && node --check lib/config.js && node --check lib/fields.js && node --check lib/schema.js && node --check lib/describe.js && node --check lib/bootstrap.js && node --check lib/diagnose.js && node --check lib/diagnose-input.js && node --check lib/limits.js && node --check lib/probe.js && node --check lib/status.js && node --check lib/route.js && node --check lib/locale-packs.js && node --check lib/settings-page.js && node --check lib/client.js && node --check scripts/expand-release-links.mjs && node --check scripts/privacy-scan.mjs",
+    "typecheck": "tsc -p tsconfig.checkjs.json",
     "privacy": "node scripts/privacy-scan.mjs",
     "pack:check": "npm pack --dry-run"
   },
@@ -54,7 +55,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.19.0",
+    "node": ">=24.9.0",
     "dsh": ">=0.2.1-0 <0.3.0-0"
   },
   "peerDependencies": {
@@ -75,6 +76,16 @@
     "react": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-timeout": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-working-directory": "0.2.2-rc.3",
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
   },
   "dsh": {
     "manifestVersion": 1,

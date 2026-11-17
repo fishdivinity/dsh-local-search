@@ -65,6 +65,7 @@
 
 - Windows。
 - DeepSeek Harness `>=0.2.1-0 <0.3.0-0`：0.2.1 与 0.2.2（含预发布）都能用，0.3 的预发布拒装。
+- Node.js `>=24.9.0`：与 DSH 0.2.2 的要求一致。插件跑在 DSH 自己的 Node 里，这条只对 CLI 宿主有意义。
 - Everything 正在运行，并安装 `es.exe`（voidtools 单独下载；插件会从 PATH/常见目录探测，也可配置 `files.everything.esPath`）。
 - 内容检索需要 Anytxt Searcher 的 **GUI**（`ATGUI.exe`）在运行；JSON-RPC 服务在 GUI 进程里，只有 `ATService` 不够。
 
@@ -97,7 +98,7 @@ dsh plugin --profile web add @fishdivinity/dsh-local-search       # dsh web
 
 **可复制的诊断。** 卡片描述下面有一个**复制诊断**：弹窗里是这台机器的一份纯文本快照——插件与 DSH 版本、`profile`、`shell`、页面是不是连着另一台机器上的 Host、系统与 node、每个后端的状态与解释它的 code（失败时还带它试过的地址与传输层错误）、配置里的 `es.exe` 路径 / 地址 / 编码 / 超时 / 上限 / 后端、检索根与默认范围、首启写回的结果（含错误）、探测时刻。文本自带标题、解释状态标签的一行 legend、以及指向错误码表的链接，所以人或别的 AI 拿到就能直接往下排查。先贴进会话让 AI 排查，解决不了再提 [issue](https://github.com/fishdivinity/dsh-local-search/issues)；家目录与 `DSH_HOME` 已经换成 `~`。同一份文本也在 `GET /dsh-local-search/api/diagnose`。
 
-**启动检查。** `checkEnginesOnStart` 默认开着：每次启动把两个后端各探一次，有失败就在右下角留一张卡，一行一个后端加修法。卡不会自己消失——关掉它只影响这一页；要让以后不再检查、也不再提示，用页面上的开关。**测试连接**与首用那一次都不受它影响。
+**启动检查。** `checkEnginesOnStart` 默认开着：每次启动把两个后端各探一次，有失败就在右下角留一张卡，一行一个后端加修法。卡显示期间每 20 秒复查一次，两个后端都应答后自己消失——比 DSH 起得晚的引擎（Anytxt 的 GUI 经常如此）不会留下假警报。关闭它只影响这个标签页，刷新后仍然关着；要让以后不再检查、也不再提示，用页面上的开关。**测试连接**与首用那一次都不受它影响。
 
 首用只补一次就停：`files.everything.esPath` 或 `content.anytxt.url` 还空着时，插件探一次、把能应答的写进去，并在隐藏键 `autoConfigured` 里记下这次已经做过决定。之后你清空的字段会保持空着，不会再被自动填回去。
 
@@ -214,11 +215,12 @@ dsh plugin --profile web add @fishdivinity/dsh-local-search       # dsh web
 
 ## 开发
 
-无运行时依赖，测试用 Node 内置 test runner：
+运行时零依赖；开发期允许 devDependencies。跑测试前先 `npm install` 一次——有一个用例用执行器自己的校验函数检查每个工具的输出 schema。测试用 Node 内置 test runner：
 
 ```powershell
 npm test
 npm run check
+npm run typecheck
 npm run pack:check
 ```
 

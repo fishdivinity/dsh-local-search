@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { describeConfig } from '../lib/describe.js'
 import { DESCRIBE_ROUTE, DIAGNOSE_ROUTE, DRAFT_PARAM, STATUS_ROUTE } from '../lib/route.js'
 import { isLoopbackUrl } from '../lib/config.js'
+import { engineEntries } from '../lib/engines.js'
 import { normalizePath as hostNormalizePath, normalizePaths as hostNormalizePaths } from '../lib/platform.js'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
@@ -641,7 +642,7 @@ test('a failing save check asks in a dialog before writing anyway', async () => 
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: false, everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } }),
+      json: async () => ({ ok: false, engines: { everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } } }),
     }
   }
   try {
@@ -726,7 +727,7 @@ test('without Modal the page falls back to the in-page confirmation', async () =
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: false, everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } }),
+      json: async () => ({ ok: false, engines: { everything: { ok: true }, anytxt: { ok: false, code: 'ANYTXT_DOWN' } } }),
     }
   }
   try {
@@ -824,8 +825,10 @@ test('the reset button asks in a dialog, then writes one atomic re-setup', async
   const writes = []
   const probed = {
     ok: true,
-    everything: { ok: true, path: 'C:/Program Files/Everything/es.exe' },
-    anytxt: { ok: true, url: 'http://127.0.0.1:9921' },
+    engines: {
+      everything: { ok: true, path: 'C:/Program Files/Everything/es.exe' },
+      anytxt: { ok: true, url: 'http://127.0.0.1:9921' },
+    },
   }
   globalThis.fetch = async (url) => {
     const target = String(url)
@@ -860,8 +863,8 @@ test('the reset button asks in a dialog, then writes one atomic re-setup', async
     assert.deepEqual(ops.slice(0, clear.length), clear.map((path) => ({ op: 'unset', path })))
     // 探测到的两处都被填回去（9921 与默认不同，需要写）。
     assert.deepEqual(ops.slice(clear.length, ops.length - 1), [
-      { op: 'set', path: fills[0].path, value: probed.everything.path },
-      { op: 'set', path: fills[1].path, value: probed.anytxt.url },
+      { op: 'set', path: fills[0].path, value: probed.engines.everything.path },
+      { op: 'set', path: fills[1].path, value: probed.engines.anytxt.url },
     ])
     assert.deepEqual(ops.at(-1), { op: 'set', path: marker, value: true })
     assert.match(flatText(page.tree()), /reset\.done/)
@@ -879,7 +882,7 @@ test('the test connection result lives in a dialog that can probe again', async 
     const target = String(url)
     if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
     probes += 1
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true, version: '1.5.0' }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true, version: '1.5.0' }, anytxt: { ok: true } } }) }
   }
   try {
     const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async () => true })
@@ -1001,7 +1004,7 @@ test('saving on a POSIX host keeps the paths the user typed', async () => {
       return { ok: true, status: 200, json: async () => describeConfig({ platform: POSIX }) }
     }
     asked.push(target)
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true }, anytxt: { ok: true } } }) }
   }, async () => {
     const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
     page.render()
@@ -1041,8 +1044,7 @@ test('the Host answer is refilled into the draft before it is written', async ()
       status: 200,
       json: async () => ({
         ok: true,
-        everything: { ok: true },
-        anytxt: { ok: true },
+        engines: { everything: { ok: true }, anytxt: { ok: true } },
         drafts: { esPath: 'C:\\Tools\\ES.EXE', dirs: ['D:\\Alpha', 'E:\\Beta'] },
       }),
     }
@@ -1078,7 +1080,7 @@ test('saving a path field writes the standard spelling when the Host does not an
   globalThis.fetch = async (url) => {
     const target = String(url)
     if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig({ platform: WINDOWS }) }
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true }, anytxt: { ok: true } } }) }
   }
   try {
     const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
@@ -1290,7 +1292,7 @@ test('clearing a field stages an unset instead of an empty override', async () =
   globalThis.fetch = async (url) => {
     const target = String(url)
     if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true }, anytxt: { ok: true } } }) }
   }
   try {
     const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
@@ -1397,6 +1399,37 @@ test('both dictionaries carry every key the Host describe asks the page to rende
   assert.equal(mod.en['section.files'], 'File names')
   assert.equal(mod.zh['engine.everything'], 'Everything')
   assert.equal(mod.zh['engine.anytxt'], 'Anytxt')
+})
+
+/**
+ * 页面用键约定渲染状态与修法：`status.<id>.*` 与 `fix.<id>.*`。注册了后端却没补字典，页面就会
+ * 显示键名——那种错只在真机上出现，这里提前变红。
+ */
+test('every registered backend has the dictionary keys the page derives from its id', () => {
+  const { mod } = loadBundle()
+  // 每种修法形态实际会问的键：`cardGuidance` 按 code/detail 选键，兜底键由形态决定。
+  const KEYS_BY_STYLE = {
+    whole: ['timeout', 'notRunning', 'notInstalled', 'esMissing'],
+    'install-link': ['timeout', 'notRunning', 'unknown', 'install'],
+  }
+  for (const { id } of engineEntries()) {
+    const style = mod.internals.ENGINE_FIX[id]?.style
+    // 注册了后端却没有修法形态：兜底会拿到 `undefined` 下载页，链接是坏的。
+    assert.ok(style !== undefined, `${id} has no ENGINE_FIX entry`)
+    for (const [language, dictionary] of Object.entries({ en: mod.en, zh: mod.zh })) {
+      for (const key of [`status.${id}.ok`, `status.${id}.down`, `status.${id}.timeout`]) {
+        assert.equal(typeof dictionary[key], 'string', `${language} is missing ${key}`)
+      }
+      for (const suffix of KEYS_BY_STYLE[style]) {
+        assert.equal(typeof dictionary[`fix.${id}.${suffix}`], 'string', `${language} is missing fix.${id}.${suffix}`)
+      }
+      if (style === 'whole') {
+        // 兜底键的命名是反的（`fix.download.<id>`）：单独钉住，否则新加一个 whole 后端会在
+        // detail=unknown 时渲染出裸键。
+        assert.equal(typeof dictionary[`fix.download.${id}`], 'string', `${language} is missing fix.download.${id}`)
+      }
+    }
+  }
 })
 
 /** `lib/locales/` 里的语言 id（文件名去扩展名）；目录不存在时为空表。 */
@@ -1707,7 +1740,7 @@ test('a failing startup check mounts the card, and a still-broken engine keeps i
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: false, anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'not-running' } }),
+      json: async () => ({ ok: false, engines: { anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'not-running' } } }),
     }
   }
   try {
@@ -1791,7 +1824,7 @@ test('the card goes away by itself once both engines answer', async (t) => {
         }),
       }
     }
-    return { ok: true, status: 200, json: async () => (healed ? { ok: true } : { ok: false, anytxt: { ok: false } }) }
+    return { ok: true, status: 200, json: async () => (healed ? { ok: true, engines: {} } : { ok: false, engines: { anytxt: { ok: false } } }) }
   }
   try {
     mod.apply(ctx)
@@ -1961,8 +1994,10 @@ test('the card follows the engines while it is on screen', async (t) => {
       json: async () => ({
         // 只有 Everything 好了：Anytxt 还坏着，整体仍是 ok=false。
         ok: false,
-        everything: everythingUp ? { ok: true } : { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' },
-        anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'unknown' },
+        engines: {
+          everything: everythingUp ? { ok: true } : { ok: false, code: 'EVERYTHING_DOWN', detail: 'not-running' },
+          anytxt: { ok: false, code: 'ANYTXT_DOWN', detail: 'unknown' },
+        },
       }),
     }
   }
@@ -2156,7 +2191,7 @@ test('the startup check is described as a flag field and saved as a boolean', as
   await withFetch(async (url) => {
     const target = String(url)
     if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true }, anytxt: { ok: true } } }) }
   }, async () => {
     const page = mountPage(mod, hooks, {
       state: { value: { checkEnginesOnStart: true }, user: {}, writable: true },
@@ -2200,7 +2235,7 @@ test('a deployment without Switch falls back to a native checkbox for the flag f
   await withFetch(async (url) => {
     const target = String(url)
     if (target.includes('/describe')) return { ok: true, status: 200, json: async () => describeConfig() }
-    return { ok: true, status: 200, json: async () => ({ ok: true, everything: { ok: true }, anytxt: { ok: true } }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, engines: { everything: { ok: true }, anytxt: { ok: true } } }) }
   }, async () => {
     const page = mountPage(mod, hooks, { state: { value: {}, user: {}, writable: true }, mutate: async (next) => { ops = next; return true } })
     page.render()

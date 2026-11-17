@@ -140,7 +140,7 @@ test('the reset recipe clears the engine and limits, keeps the scopes', () => {
     assert.ok(!path.startsWith('scopes.'), `${path} must survive a reset`)
     assert.notEqual(path, 'checkEnginesOnStart', `${path} must survive a reset`)
   }
-  assert.deepEqual(reset.fills.map((fill) => fill.from), ['everything.path', 'anytxt.url'])
+  assert.deepEqual(reset.fills.map((fill) => fill.from), ['engines.everything.path', 'engines.anytxt.url'])
   assert.deepEqual(reset.marker, PATHS.autoConfigured)
   assert.equal(reset.fills[1].default, DEFAULTS.content.anytxt.url)
 })

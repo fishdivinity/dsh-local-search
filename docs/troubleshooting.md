@@ -62,3 +62,15 @@ These codes answer the page's own read-only requests, not the tools. The card tu
 | Code | Produced by | What you see | Fix |
 |---|---|---|---|
 | `LOCAL_SEARCH_ERROR` | tool error wrapper | A failure that is not an engine error; the original message is passed through unchanged. | Read the message; if it names nothing actionable, give the diagnostics text to the assistant, and open an issue only if it stays unexplained. |
+
+## The plugin row is gone after safe mode
+
+Desktop "disable all plugins" / "restore safe mode" renames the whole profile patch to `cordis.patch.yml.bak-<millis>` and rebuilds the profile from scratch. The plugin row and its `autoConfigured` marker lived in that file, so the card comes back with defaults and the page does not warn — search roots, limits and the backend choice all look reset.
+
+To recover, stop the app and merge your row back from the backup:
+
+1. Find `cordis.patch.yml.bak-*` next to `cordis.patch.yml` in the profile directory.
+2. Copy the `fishdivinity-local-search` block (including its `config:`) into the live patch, or restore the whole backup if nothing else changed since.
+3. Start the app; the card shows the restored values.
+
+A home-level patch (`$DSH_HOME/cordis.patch.yml`) would survive that reset, but it overrides the profile: the card then cannot save, because the Host refuses writes the home layer already provides. That is a deliberate trade-off, not the fix.

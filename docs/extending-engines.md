@@ -7,20 +7,22 @@ The tool surface is intentionally capability-based (`local_search_files` / `loca
 Put the backend in `lib/` (for example `lib/other-files.js` or `lib/other-content.js`) and export plain functions without importing DSH runtime packages, so it stays unit-testable under Node:
 
 ```js
-// files engine
+// files engine: raw rows only
 export async function searchFiles(args) { /* -> { items, truncated } */ }
 export async function probe(args) { /* -> { state: 'ready', version, path } | { state, detail, code, message } */ }
 
-// content engine
+// content engine: raw rows only; ref is the backend's own id
 export async function searchContent(args) { /* -> { items, total, truncated } */ }
 export async function getFragments(args) { /* -> string[] */ }
 export async function getRawText(args) { /* -> string */ }
 export async function probe(args) { /* -> { state: 'ready', url } | { state, detail, code, message } */ }
 ```
 
+`search` returns **raw** rows: `{ path, size?, modified? }` for files, plus `{ ref }` for content where `ref` is the backend's own id. `lib/result.js` stamps `engine` / `ref` / `truncated` and validates dates; do not add those fields yourself. A raw item without `path` (or `ref`), a `modified` that is not ISO, or an undeclared top-level key fails the contract before the model sees it.
+
 `probe` never throws: a backend that cannot answer reports a `state` instead, because the page, the startup check and `local_search_status` all call it. `state` is one of `ready`, `missing-tool` (the executable is not there), `missing-index` (the tool is there but its index is not), `down` (everything is installed and connected-ish, but the call failed). `detail` is the finer token that picks the page's fix line (`es-missing`, `not-installed`, `not-running`, `unknown`); `code` and `message` are the same stable pair a tool call would raise, so the model-facing surface does not change shape.
 
-`items` for content already carry `ref`; the registry wrapper should add `engine: name` (the tools add it for the registered engine today).
+`items` for content carry a bare `ref` (the backend's own id); `lib/result.js` adds the `<engine>:` prefix. Nothing else stamps those fields.
 
 ## 2. Register it
 
@@ -46,6 +48,7 @@ which the tool layer converts to a `HarnessError`.
 
 - Add a unit test with a mock transport/fixture; no DSH runtime is needed for backend modules. Cover all four `probe` states, not just `ready` and `down`.
 - Add the engine to `engineNames()` coverage. `test/engines.test.js` fails when a registry entry has no `probe` function or still carries a `status` one.
+- `test/contract.test.js` runs one fixture through every registered backend: the keys, the `truncated` meaning and the rendered first line must match. `test/client.test.js` fails when the dictionaries lack `status.<id>.*` or `fix.<id>.*`, which is what the page derives from the id.
 - Update `README.md` / `README-zh.md` with requirements and scope semantics. Error codes are only explained in `docs/troubleshooting.md`; add the new ones there.
 - Add a `docs/` note for user-installed prerequisite/index behavior.
 

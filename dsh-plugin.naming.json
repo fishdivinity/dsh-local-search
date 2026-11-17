@@ -23,6 +23,11 @@
     "skillProviders": [],
     "events": [],
     "settingsNamespaces": ["fishdivinity-local-search"],
-    "routes": ["/dsh-local-search/api/status", "/dsh-local-search/api/describe"]
+    "routes": [
+      "/dsh-local-search/api/status",
+      "/dsh-local-search/api/describe",
+      "/dsh-local-search/api/diagnose",
+      "/dsh-local-search/api/locales"
+    ]
   }
 }

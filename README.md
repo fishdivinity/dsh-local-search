@@ -65,6 +65,7 @@ This plugin gives it both: `es.exe` for file and folder **names** wherever Every
 
 - Windows.
 - DeepSeek Harness `>=0.2.1-0 <0.3.0-0` — 0.2.1 and 0.2.2 (pre-releases included) run it; 0.3 pre-releases are refused.
+- Node.js `>=24.9.0` — the same floor DSH 0.2.2 sets. The plugin runs inside DSH's Node, so this only matters for a CLI host.
 - [Everything](https://www.voidtools.com/) running, plus `es.exe` (a separate download from voidtools; the plugin auto-detects PATH/common install folders, or set `files.everything.esPath`).
 - [Anytxt Searcher](https://anytxt.net/) for content search: the **GUI** (`ATGUI.exe`) must be running because the JSON-RPC service lives inside it. The indexing service alone is not enough.
 
@@ -215,11 +216,12 @@ A shorter machine-readable copy of this section is in [`llms.txt`](llms.txt). Te
 
 ## Development
 
-No dependencies; tests use Node's built-in test runner.
+No runtime dependencies; development-only dependencies are allowed. Run `npm install` once before the suite — one test checks each tool's output schema with the executor's own validator. Tests use Node's built-in test runner.
 
 ```powershell
 npm test
 npm run check
+npm run typecheck
 npm run pack:check
 ```
 
