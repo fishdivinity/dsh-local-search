@@ -2,6 +2,21 @@
 
 Chinese entries live in [CHANGELOG.md](CHANGELOG.md). Entries up to 0.2.1 are archived with the English they shipped with; 0.3.0 onward is written in both files.
 
+## 0.4.4 — 2026-11-17
+
+**Whole-disk search no longer fails just because a drive is gone**: if none (or only some) of the configured search roots exist, content search says so and keeps searching the workspace instead of failing the whole call — on 0.4.3 a changed drive letter broke it.
+
+- `search`: whole-disk content search now explains a missing or partial set of roots and falls back to the workspace; on 0.4.3 the result carried two fields the local side did not know, so the output check rejected the whole call.
+- `search`: both engines' data is shaped in one place before it reaches a tool — dates, refs and "is there more" are decided once; a backend that omits a field now fails loudly instead of quietly returning an empty list.
+- `engines`: "which engine works, which one is down" is one table now: the status tool, the plugin card, the copyable diagnostics and the first-run auto-config all read it, so adding a backend no longer means editing several places.
+- `page`: the plugin card works from the new status shape; each backend's status line and fix are derived from its name, so a new backend only needs its wording.
+- `page`: the "read the environment, probe once" part of the diagnostics moved into its own file; `diagnose.js` only formats.
+- `dev`: each of the five tools has its own file (they used to share one 415-line function); the time conversion has its own file too.
+- `package`: the Node requirement is now 24.9 (matching DSH 0.2.2); the plugin manifest gains the `diagnose` / `locales` routes; a lockfile is added and CI uses `npm ci`.
+- `quality`: development-time type checking (it does not ship); each tool's output shape is pinned with the executor's own validator.
+- `test`: new tests for the result shape, route wiring, error codes against the docs, config schema and time conversion; 286 → 305 tests.
+- `docs`: added "how to recover plugin config after safe mode"; the extension guide now says backends return raw data; the READMEs add the Node requirement and the development-dependency policy, and the Chinese startup-check paragraph now matches the English one.
+
 ## 0.4.3 — 2026-11-06
 
 **False alarms go away by themselves**: when an engine starts after DSH, the bottom-right card removes itself once the engine answers; a timeout says timeout instead of "unreachable"; and a card the user closed does not come back after a reload.
